@@ -16,22 +16,22 @@ Reference: Anthropic FlashProve commit
 - These are test diagnostics, **not full Rust proof verification**.
 
 Evidence:
-https://github.com/qoosmo/rust-flashprove/actions/runs/42064654513
+https://github.com/qoosmo/rust-flashprove/actions/runs/42065063317
 
 ## Unverified first-chain regions
 
-| # | Offset | Bytes | Next round |
-|---|---:|---:|---:|
-| 1 | 77,804 | 581,072 | 1,669 |
-| 2 | 733,332 | 399,136 | 3,209 |
-| 3 | 1,210,044 | 594,032 | 4,871 |
-| 4 | 1,878,508 | 399,520 | 6,412 |
-| 5 | 2,347,708 | 446,896 | 7,997 |
-| 6 | 2,794,740 | 88,864 | 8,001 |
-| 7 | 2,883,884 | 62,616 | 8,008 |
-| 8 | 2,946,732 | 40,800 | 8,014 |
-| 9 | 2,987,764 | 38,488 | 8,020 |
-| 10 | 3,131,164 | 28,264 | 8,023 |
+| # | Offset | Bytes | Next round | Name of next round |
+|---|---:|---:|---:|---|
+| 1 | 77,804 | 581,072 | 1,669 | PSC epsilon |
+| 2 | 733,332 | 399,136 | 3,209 | PSC epsilon |
+| 3 | 1,210,044 | 594,032 | 4,871 | PSC epsilon |
+| 4 | 1,878,508 | 399,520 | 6,412 | PSC epsilon |
+| 5 | 2,347,708 | 446,896 | 7,997 | FOLD epsilon |
+| 6 | 2,794,740 | 88,864 | 8,001 | FOLD epsilon |
+| 7 | 2,883,884 | 62,616 | 8,008 | FOLD epsilon |
+| 8 | 2,946,732 | 40,800 | 8,014 | FOLD epsilon |
+| 9 | 2,987,764 | 38,488 | 8,020 | BASE lambda |
+| 10 | 3,131,164 | 28,264 | 8,023 | PSC epsilon |
 
 These are **gaps in field reads**, not yet typed into proof record
 categories. Do not assert that every byte is a Merkle opening merely because
