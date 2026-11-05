@@ -1,49 +1,71 @@
-# Stage A/B/C evidence snapshot — 2026-11-05
+# RustFlashProve — verified milestone snapshot (2026-11-05)
 
-## PROVED / VERIFIED
+## Upstream and repository
 
-- Upstream public commit pin was read via the GitHub API:
-  `9e2bdd8ff5bf9c62f18263d7dac189b0400b260c`.
-- Headers, field and binary request format are grounded in upstream source and FORMAT.md.
-- The included request and next-token fixtures are *byte-identical to upstream*:
-  - `upstream-example.req`: 264 bytes, SHA-256 `ce700974a03d43586d66ca742f9bbc8ad45c936d03dfdb8614dd559a2780aa13`.
-  - `upstream-example.y`: 4 bytes, SHA-256 `add7f2a4843f8c512c0e2875546581db11b9ba227ee008b5f719dfacb125de76`.
-- A Python cross-check of the fixture bytes recovered `T=64, r=60, e=64, y=199`.
-- No Rust compilation or Rust tests have been run in the authoring container (Rust toolchain absent).
+- Reference: Anthropic FlashProve `9e2bdd8ff5bf9c62f18263d7dac189b0400b260c`.
+- Public Rust repository: https://github.com/qoosmo/rust-flashprove.
+- New implementation under draft PR #1, not merged to `main`.
+- Rust workspace builds and tests in Linux GitHub Actions; this authoring
+  container does not have a Rust toolchain. The prior bootstrap-only status
+  is obsolete.
 
-## IMPLEMENTED (source written; compilation still to be performed)
+## IMPLEMENTED AND TESTED
 
-- Four-crate Cargo workspace and GitHub Actions workflow.
-- Canonical field and 3-coordinate extension-field encoding and arithmetic.
-- Bounds-checked byte cursor; proof / key / leaf headers.
-- Strict request and next-token file readers, optional semantic window checks.
-- Explicit `NotImplemented` instead of any proof acceptance.
-- Unit tests: boundary, field arithmetic, extension, malformed headers, upstream fixture.
+1. Goldilocks prime/cubic-extension arithmetic, canonical binary parsing,
+   proof-header and request/next-token envelope inspection.
+2. H821 BLAKE2b domain-separated hashes, run/first-query values, round calls,
+   proof-of-work, and challenge sampling with Anthropic known-answer vectors.
+3. Independent C++/Rust synthetic transcript comparison, exact byte equality.
+4. Real public configuration digest equality (policy, layout, scales).
+5. Strict parser of C++-serialized first-chain round plan and statement, with
+   Rust recomputation of its parameter hash, real configuration digest,
+   request bytes, and stored-copy index. The fixture has 8,037 plan entries,
+   exactly 8,037 expanded physical rounds and 8 named public parameter items.
+6. Trace-guided, byte-for-byte reconstruction of **all 8,037 first-chain
+   prover messages**, their work nonces and resulting Fiat–Shamir states from
+   the accepted proof file. The trace supplies the C++ Reader's observed
+   proof offsets; Rust re-reads those bytes independently and recomputes each
+   hash and state. This is component-level differential testing, NOT proof
+   verification.
+7. First two real rounds additionally reproduce three sampled extension
+   field challenges. Five first-two-round negative cases, six public-input
+   binding negative cases and four bulk-state/offset mutation cases fail
+   closed in CI. The separate C++ proof-verdict vs Rust *structural* smoke
+   classifies six cases without incorrectly calling structural inspection a
+   full verification verdict.
 
-## TESTED
+CI evidence:
+- All first-chain states: https://github.com/qoosmo/rust-flashprove/actions/runs/42064122802
+- First 512 rounds: https://github.com/qoosmo/rust-flashprove/actions/runs/42063607185
+- Public-input audit: https://github.com/qoosmo/rust-flashprove/actions/runs/42062180232
 
-- Upstream binary-fixture SHA-256 and structural parameters checked in Python, exact matches.
-- **No `cargo test` claim:** the container has neither cargo nor rustc.
-- **No C++ or Lean execution claim:** their binaries were not built locally.
+## EXACT UNVERIFIED BOUNDARY
 
-## OPEN
-
-1. Complete proof-body parser from an exact dynamic round plan.
-2. Strict configuration validation and hashing, transcript state + BLAKE2b.
-3. Commitment, Merkle, sumcheck, lookup and full verifier orchestration.
-4. Actual C++↔Rust↔Lean differential harness, including negative tests.
-5. Formal correspondence proof; soundness theorem assumptions.
+- The full first-chain replay SKIPS 2,679,688 bytes of file-only data
+  between transcript reads. They may contain Merkle openings and related
+  records: **their contents are not verified or parsed in Rust**.
+- First-query public parameters/statement and per-field read offsets are
+  still serialized/observed by instrumented C++, NOT constructed from scratch
+  by Rust. The Rust test independently checks their encoding and external
+  bindings, but must not trust this diagnostic as a standalone verifier.
+- Shared and second proof chains, algebraic/sumcheck/lookup equations,
+  Merkle membership, key and leaf checks, exact end-of-file verification,
+  and final YES/NO acceptance by Rust remain unimplemented.
+- `flashprove verify` still fails closed. No Lean certification or
+  universal semantic-equivalence theorem is claimed.
+- This is an exact finite fixture differential, not a security audit.
 
 ## NEXT
 
-- On a machine with Rust: `bash scripts/RUN.sh`; fix any compilation or lint findings.
-- Obtain/clone pinned upstream and use its stored `example.proof` as the first body-walk target.
-- Add a trace interface for planned rounds (read elements, close round, challenge bytes),
-  initially with upstream vectors; implement nothing by guessed format.
-- Add differential tests with definitive outcomes and explicit input domain.
+1. Enumerate and type the skipped file-only ranges, then verify authentic
+   Merkle openings and require exact read boundaries in Rust.
+2. Build the public first query *independently* from public config, models
+   and request plan rather than relying on C++ Binder serialization.
+3. Replay the shared and second chains and all drawn challenges.
+4. Implement algebraic consistency checks and the full fail-closed Rust
+   verifier; only then compare C++/Rust proof acceptance decisions on
+   valid and mutated corpora.
+5. Certify the correspondence of individual definitions and invariants in Lean.
 
-### Note on GitHub publication
-
-The `qoosmo/rust-flashprove` repository was not found via the connected GitHub tool.
-Repository creation is not exposed through this connection and no publication occurred.
-The opt-in script `scripts/PUBLISH_TO_GITHUB.sh` prepares local publication with GitHub CLI.
+Implementation and evidence details: `docs/TRANSCRIPT.md`,
+`docs/DIFFERENTIAL.md` and `docs/PUBLIC_INPUT_AUDIT.md`.
