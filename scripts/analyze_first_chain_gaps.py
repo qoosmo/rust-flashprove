@@ -82,7 +82,8 @@ def main():
     print(f"last_transcript_read_end={cursor}")
     print(f"proof_size={nproof}")
     for i,(round_no,at,width,key) in enumerate(first,1):
-        print(f"gap_{i}=before_round_{round_no},offset_{at},bytes_{width},next_{key}")
+        round_name=data.get(f"bulk_{round_no}_name","UNKNOWN").replace(",","_")
+        print(f"gap_{i}=before_round_{round_no},round_{round_name},offset_{at},bytes_{width},next_{key}")
     print("scope=GAP_LOCATOR_ONLY_CONTENT_NOT_VERIFIED")
 
 if __name__=="__main__":
