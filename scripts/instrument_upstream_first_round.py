@@ -49,7 +49,7 @@ ASK_HOOK = r'''    // RUSTFLASH_FIRST_ROUND_TRACE: after the ordinary C++ chain 
     if (chain_->label() == 0x46524d01ULL && chain_->rounds() == 1) {
       if (std::FILE *f = rustflash_trace_open()) {
         std::fprintf(f, "first_round_name=%s\n", entry.name.c_str());
-        std::fprintf(f, "first_round_kind=%u\n", (unsigned)entry.kind);
+        std::fprintf(f, "first_round_kind=%u\n", (unsigned)number_of(entry.kind));
         std::fprintf(f, "first_round_work=%u\n", (unsigned)entry.work_bits);
         std::fprintf(f, "first_round_nonce=%llu\n", (unsigned long long)n);
         std::fprintf(f, "first_round_nonce_bytes=%u\n", (unsigned)plan_->set.nonce_bytes);
@@ -63,7 +63,7 @@ ASK_HOOK = r'''    // RUSTFLASH_FIRST_ROUND_TRACE: after the ordinary C++ chain 
     if (chain_->label() == 0x46524d01ULL && chain_->rounds() == 2) {
       if (std::FILE *f = rustflash_trace_open()) {
         std::fprintf(f, "second_round_name=%s\n", entry.name.c_str());
-        std::fprintf(f, "second_round_kind=%u\n", (unsigned)entry.kind);
+        std::fprintf(f, "second_round_kind=%u\n", (unsigned)number_of(entry.kind));
         std::fprintf(f, "second_round_work=%u\n", (unsigned)entry.work_bits);
         std::fprintf(f, "second_round_nonce=%llu\n", (unsigned long long)n);
         std::fprintf(f, "second_round_nonce_bytes=%u\n", (unsigned)plan_->set.nonce_bytes);
