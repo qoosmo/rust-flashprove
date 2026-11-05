@@ -15,6 +15,7 @@ on:
       - 'scripts/real_round_negative.py'
       - 'scripts/public_query_negative.py'
       - 'scripts/instrument_upstream_round_events.py'
+      - 'scripts/bulk_round_negative.py'
 
 permissions:
   contents: read
@@ -88,6 +89,13 @@ jobs:
             reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
             "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
             | tee reports/bulk-round-replay-result.txt
+      - name: Reject corrupted proof and transcript entries in 64-round replay
+        run: |
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          python3 scripts/bulk_round_negative.py \
+            target/release/bulk_round_replay reports/real-first-round.trace \
+            "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin"
       - name: Reject public configuration, request and first-query mutations
         run: |
           FIXTURE="$PWD/upstream-src/examples/accepted-proof"
