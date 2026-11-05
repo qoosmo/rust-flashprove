@@ -45,7 +45,9 @@ fn run(a:&[String])->Result<(),String>{
   }
  }
  println!("REAL_PUBLIC_QUERY_OK");
- println!("planned_rounds={}",p.rounds.len());
+ println!("planned_round_entries={}",p.rounds.len());
+ let expanded: u64=p.rounds.iter().try_fold(0_u64,|sum,r|sum.checked_add(r.count)).ok_or("round count overflow")?;
+ println!("expanded_rounds={expanded}");
  println!("parameter_items={}",p.items.len());
  println!("config_request_copy_bindings=PASS");
  println!("scope=TRACE_SERIALIZED_PLAN_NOT_INDEPENDENT_CONSTRUCTION");
