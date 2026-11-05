@@ -25,8 +25,15 @@ scripts/differential_smoke.py on six cases.
 The report explicitly states full_rust_verification=false and
 semantic_equivalence_established=false.
 
-Next actual milestones: planned round parser with exact EOF consumption,
-BLAKE2b transcript and challenge vectors, key/leaf/commitment/opening checks,
-full Rust acceptance of upstream honest proof, then genuine verdict
+A separate component-level trace now compares **the first two real rounds** of
+upstream's accepted proof, including the Rust recomputation of the hash of
+C++-serialized parameters and three sampled extension-field challenges.
+The C++ hook is test-only; the Rust executable still performs no complete
+proof verification. See docs/TRANSCRIPT.md and the matching Linux CI job.
+
+Next actual milestones: independently serialize public first-query inputs,
+parse and replay the remaining planned rounds with exact EOF consumption,
+key/leaf/commitment/opening checks, full Rust acceptance of upstream honest proof,
+then genuine verdict
 differentials over the mutation corpus. Finite tests do not prove universal
 semantic equivalence.
