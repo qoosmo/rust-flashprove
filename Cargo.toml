@@ -2,6 +2,7 @@
 members = [
     "crates/flashprove-field",
     "crates/flashprove-format",
+    "crates/flashprove-transcript",
     "crates/flashprove-verifier",
     "crates/flashprove-cli",
 ]
