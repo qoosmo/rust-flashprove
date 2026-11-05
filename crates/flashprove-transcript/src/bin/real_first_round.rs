@@ -7,7 +7,7 @@
 //!
 //! This DOES NOT build a complete first query from config files or verify proofs.
 
-use flashprove_transcript::{first_value, run_value, Chain, Digest, RoundKind};
+use flashprove_transcript::{first_value, h, run_value, Chain, Digest, RoundKind};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -83,7 +83,18 @@ fn verify(proof: &[u8], trace: &BTreeMap<String, String>) -> Result<(), String> 
     // Rust independently hashes them: later work must encode those from the
     // public configuration without using C++ trace bytes.
     let parameters = digest(trace, "first_parameters")?;
+    let parameter_bytes = bytes(trace, "first_parameters_serialized")?;
+    same(
+        "independently hashed first-query parameter serialization",
+        h(169, 0, 1, None, &parameter_bytes, None).map_err(|e| e.to_string())?,
+        parameters.to_vec(),
+    )?;
     let statement = bytes(trace, "first_statement")?;
+    same(
+        "first-query statement serialization",
+        statement.as_slice(),
+        bytes(trace, "first_statement_serialized")?.as_slice(),
+    )?;
     let run = run_value(LABEL_FIRST, &parameters, &salt).map_err(|e| e.to_string())?;
     let rho0 = first_value(LABEL_FIRST, &parameters, &statement, Some(&run))
         .map_err(|e| e.to_string())?;
@@ -142,14 +153,73 @@ fn verify(proof: &[u8], trace: &BTreeMap<String, String>) -> Result<(), String> 
             break;
         }
     }
-    println!("REAL_FIRST_ROUND_OK");
+    // The first two proof rounds contain no file-only opening or interleaved
+    // transcript bytes. Verify that the next C++-absorbed message is exactly
+    // the next contiguous proof slice, rather than trusting the trace alone.
+    let second_first = last.checked_add(if work_bits > 0 { nonce_bytes } else { 0 })
+        .ok_or("second-round start overflow")?;
+    let second_len = usize::try_from(number(trace, "second_round_message_bytes")?)
+        .map_err(|_| "second message length overflow")?;
+    let second_last = second_first.checked_add(second_len).ok_or("second message offset overflow")?;
+    let second_message = proof.get(second_first..second_last)
+        .ok_or("second message truncated in proof")?;
+    same(
+        "second prover message read independently from proof",
+        second_message,
+        bytes(trace, "second_round_message")?.as_slice(),
+    )?;
+    let second_kind = parse_kind(number(trace, "second_round_kind")?)?;
+    let second_work_bits = u8::try_from(number(trace, "second_round_work")?)
+        .map_err(|_| "second work bits overflow")?;
+    let second_nonce = number(trace, "second_round_nonce")?;
+    let second_nonce_bytes = usize::try_from(number(trace, "second_round_nonce_bytes")?)
+        .map_err(|_| "second nonce width overflow")?;
+    if second_nonce_bytes == 0 || second_nonce_bytes > 8 {
+        return Err("invalid second nonce width".into());
+    }
+    if second_work_bits == 0 {
+        same("second round without work has no nonce", second_nonce, 0)?;
+    } else {
+        let end = second_last.checked_add(second_nonce_bytes).ok_or("second nonce overflow")?;
+        let from_proof = proof.get(second_last..end).ok_or("second nonce cut short")?;
+        let mut word = [0_u8; 8];
+        word[..second_nonce_bytes].copy_from_slice(from_proof);
+        same("second nonce read from proof", u64::from_le_bytes(word), second_nonce)?;
+    }
+    let mut second_draw = chain.close_round(second_message, second_kind, second_work_bits, second_nonce)
+        .map_err(|e| format!("second real round rejected by Rust: {e}"))?;
+    same("second-round transcript state", *chain.value(), digest(trace, "second_rho2")?)?;
+    let mut second_samples = 0;
+    for i in 1..=3 {
+        let key = format!("second_sample_{i}");
+        if let Some(expected) = trace.get(&key) {
+            let nonzero = number(trace, &format!("{key}_nonzero"))?;
+            if nonzero > 1 {
+                return Err(format!("invalid nonzero bit for sample {i}"));
+            }
+            let x = if nonzero != 0 {
+                second_draw.extension_nonzero().map_err(|e| e.to_string())?
+            } else {
+                second_draw.extension().map_err(|e| e.to_string())?
+            };
+            let actual = x.0.iter().map(|c| c.value().to_string()).collect::<Vec<_>>().join(",");
+            same(&key, actual.as_str(), expected.as_str())?;
+            second_samples += 1;
+        } else {
+            break;
+        }
+    }
+    println!("REAL_FIRST_TWO_ROUNDS_OK");
     println!("proof_leaf_index={}", u32::from_le_bytes(proof[8..12].try_into().expect("four bytes")));
     println!("first_round_name={}", field(trace, "first_round_name")?);
     println!("first_round_message_bytes={message_len}");
     println!("rho0={}", hex(&rho0));
-    println!("rho1={}", hex(chain.value()));
-    println!("sampled_extension_challenges_checked={count}");
-    println!("scope=FIRST_ROUND_ONLY_NOT_A_PROOF_VERDICT");
+    println!("rho1={}", hex(&digest(trace, "first_rho1")?));
+    println!("second_round_name={}", field(trace, "second_round_name")?);
+    println!("second_round_message_bytes={second_len}");
+    println!("rho2={}", hex(chain.value()));
+    println!("sampled_extension_challenges_checked={}", count + second_samples);
+    println!("scope=FIRST_TWO_ROUNDS_ONLY_NOT_A_PROOF_VERDICT");
     Ok(())
 }
 
