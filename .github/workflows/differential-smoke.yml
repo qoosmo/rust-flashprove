@@ -1,0 +1,50 @@
+name: Upstream C++ and Rust inspection smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/differential_smoke.py'
+      - 'tests/test_differential_smoke.py'
+      - '.github/workflows/differential-smoke.yml'
+      - 'crates/flashprove-cli/**'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check runner classification logic
+        run: python3 -m unittest discover -s tests -p 'test_differential_smoke.py' -v
+      - name: Build Rust inspection CLI
+        run: cargo build --release -p flashprove-cli
+      - name: Checkout pinned upstream C++ verifier and example
+        run: |
+          git clone --filter=blob:none --no-checkout --depth 1 https://github.com/anthropics/FlashProve.git upstream-src
+          git -C upstream-src sparse-checkout init --cone
+          git -C upstream-src sparse-checkout set verifier blocks prover examples/accepted-proof
+          git -C upstream-src fetch --depth 1 origin 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+          git -C upstream-src checkout --detach 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+      - name: Build upstream C++ verifier on Linux
+        run: |
+          g++ --version
+          (cd upstream-src && bash verifier/build.sh)
+      - name: Compare C++ proof verdict with Rust structural inspection
+        run: |
+          python3 scripts/differential_smoke.py \
+            --upstream upstream-src \
+            --cpp upstream-src/bin/cp_verify \
+            --rust target/release/flashprove \
+            --json-out reports/differential-smoke.json
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: differential-smoke-report
+          path: reports/differential-smoke.json
+          if-no-files-found: warn
