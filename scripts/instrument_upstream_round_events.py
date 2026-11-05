@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test-only C++ instrumentation for first 512 *real* first-chain rounds.
+"""Test-only C++ instrumentation for first 8037 *real* first-chain rounds.
 
 Run AFTER instrument_upstream_first_round.py on the PINNED checkout. Never
 build this version as a production verifier. Logs each transcript message's
@@ -10,8 +10,8 @@ opening bytes are NOT checked by the Rust replay.
 from pathlib import Path
 import sys
 
-LIMIT = 512
-PREFIX = "RUSTFLASH_BULK_512"
+LIMIT = 8037
+PREFIX = "RUSTFLASH_BULK_8037"
 def replace(s, old, replacement, context):
     if s.count(old) != 1:
         raise RuntimeError(f"{context}: expected unique anchor, got {s.count(old)}")
@@ -36,8 +36,8 @@ def main():
     # The Rounds base class knows the exact message and canonical hash state
     # after the ordinary C++ proof-of-work checks. It has no Reader.
     marker = "    message_.clear();\n    roots_ = answers_ = 0;\n"
-    logging = r'''    // RUSTFLASH_BULK_512: test-only replay oracle for the current message.
-    if (chain_->label() == 0x46524d01ULL && chain_->rounds() <= 512) {
+    logging = r'''    // RUSTFLASH_BULK_8037: test-only replay oracle for the current message.
+    if (chain_->label() == 0x46524d01ULL && chain_->rounds() <= 8037) {
       if (std::FILE *f = rustflash_trace_open()) {
         const auto rno = (unsigned long long)chain_->rounds();
         std::fprintf(f, "bulk_%llu_name=%s\n", rno, entry.name.c_str());
@@ -70,7 +70,7 @@ def main():
   unsigned long long rustflash_piece_round_ = 0;
   unsigned long long rustflash_piece_index_ = 0;
   void rustflash_piece(size_t size) {
-    if (!chain_ || chain_->label() != 0x46524d01ULL || chain_->rounds() >= 512) return;
+    if (!chain_ || chain_->label() != 0x46524d01ULL || chain_->rounds() >= 8037) return;
     const auto rno = (unsigned long long)chain_->rounds() + 1;
     if (rno != rustflash_piece_round_) {
       rustflash_piece_round_ = rno;
@@ -96,7 +96,7 @@ public:
         "VerifierRounds::take")
     nonce_marker="    if (!q) return false;\n    n = 0;\n"
     nonce_hook=r'''    if (!q) return false;
-    if (chain_->label() == 0x46524d01ULL && chain_->rounds() < 512) {
+    if (chain_->label() == 0x46524d01ULL && chain_->rounds() < 8037) {
       if (std::FILE *f = rustflash_trace_open()) {
         std::fprintf(f, "bulk_%llu_nonce_range=%zu,%u\n",
                      (unsigned long long)chain_->rounds() + 1,
