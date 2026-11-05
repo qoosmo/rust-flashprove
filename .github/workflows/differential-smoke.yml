@@ -56,8 +56,9 @@ jobs:
             upstream-src/examples/accepted-proof/config/KL.bin > cpp-transcript.txt
           diff -u cpp-transcript.txt rust-transcript.txt
           echo 'C++ and Rust transcript outputs agree exactly'
-      - name: Compare first real proof round and challenges byte-for-byte
+      - name: Compare first two real proof rounds and challenges byte-for-byte
         run: |
+          set -euo pipefail
           mkdir -p reports
           FIXTURE="$PWD/upstream-src/examples/accepted-proof"
           RUST_FLASH_TRACE_PATH="$PWD/reports/real-first-round.trace" \
