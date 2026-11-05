@@ -91,7 +91,7 @@ def main() -> int:
     fixture = upstream / "examples" / "accepted-proof"
     proof = (fixture / "example.proof").read_bytes()
     proof_hash = hashlib.sha256(proof).hexdigest()
-    if proof_hash != "5ed47fd101093e826a5bc833e57633e5a9237b49213c8f37cf518a3c1d8d9d99":
+    if proof_hash != "5ed47fd101093e826a5bc833e57633e5a9237b49213c8f37cf518a3c1c8d9d99":
         print("ERROR: accepted proof fixture differs from SHA256SUMS", file=sys.stderr)
         return 2
     config = fixture / "config"
