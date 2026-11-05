@@ -1,5 +1,5 @@
 //! Synthetic transcript oracle. Output compared byte-for-byte with C++ Chain.
-use flashprove_transcript::{first_value, run_value, Chain, Digest, RoundKind};
+use flashprove_transcript::{configuration_digest, first_value, run_value, Chain, Digest, RoundKind};
 
 fn digest_hex(value: &Digest) -> String {
     value.iter().map(|b| format!("{b:02x}")).collect()
@@ -11,6 +11,18 @@ fn words(numbers: &[u64]) -> Vec<u8> {
     numbers.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() != 3 {
+        eprintln!("usage: transcript_rust_oracle POLICY LAYOUT SCALES");
+        std::process::exit(2);
+    }
+    let files: Vec<Vec<u8>> = args.iter().map(|p| std::fs::read(p).expect("configuration file")).collect();
+    let configuration = configuration_digest(&[
+        files[0].as_slice(),
+        files[1].as_slice(),
+        files[2].as_slice(),
+    ]).unwrap();
+    println!("configuration={}", digest_hex(&configuration));
     let mut parameters = [0_u8; 32];
     let mut salt = [0_u8; 32];
     for i in 0..32 {
