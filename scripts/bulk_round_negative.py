@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed mutation checks for the trace-guided 64-round replay."""
+"""Fail-closed mutation checks for the trace-guided 512-round replay."""
 import argparse
 import subprocess
 import tempfile
@@ -33,7 +33,7 @@ def main():
         f=files.copy();f[1]=changed
         expect_reject(exe,f,"first-round proof message byte")
         trace=files[0].read_text()
-        for key in ["bulk_3_rho","bulk_64_msg_hash"]:
+        for key in ["bulk_3_rho","bulk_512_msg_hash"]:
             line=next(x for x in trace.splitlines() if x.startswith(key+"="))
             new=line[:-1]+("1" if line[-1]!="1" else "0")
             modified=work/(key+".trace")
@@ -42,7 +42,7 @@ def main():
             expect_reject(exe,f,key)
         piece=next((x for x in trace.splitlines()
                     if x.startswith("bulk_") and "_piece_0=" in x and
-                    3<=int(x.split("_")[1])<=64),None)
+                    3<=int(x.split("_")[1])<=512),None)
         if piece is None:
             raise RuntimeError("no proof message read event after second round")
         head, numbers=piece.split("=",1)
