@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "crates/flashprove-field",
+    "crates/flashprove-format",
+    "crates/flashprove-verifier",
+    "crates/flashprove-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.82"
+repository = "https://github.com/qoosmo/rust-flashprove"

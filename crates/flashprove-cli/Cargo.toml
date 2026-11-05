@@ -1,0 +1,15 @@
+[package]
+name = "flashprove-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "flashprove"
+path = "src/main.rs"
+
+[dependencies]
+flashprove-format = { path = "../flashprove-format" }
+flashprove-verifier = { path = "../flashprove-verifier" }

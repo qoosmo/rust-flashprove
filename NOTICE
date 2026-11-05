@@ -1,0 +1,13 @@
+RustFlashProve
+Copyright 2026 RustFlashProve contributors
+SPDX-License-Identifier: Apache-2.0
+
+Independent study and implementation based on the publicly documented FlashProve
+protocol and file format by Anthropic PBC (Copyright 2026 Anthropic PBC).
+Upstream: https://github.com/anthropics/FlashProve
+Pinned upstream revision: 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+
+The source code in this repository was written independently for RustFlashProve.
+Upstream source code has not been copied into the Rust crates. Files in
+'tests/vectors' are explicitly attributed upstream test inputs.
+No Anthropic affiliation or endorsement is implied.
