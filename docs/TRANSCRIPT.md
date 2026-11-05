@@ -41,6 +41,38 @@ This is independent Rust reference code, not a Rust proof verifier.
 Successful oracle equality is component-level differential evidence, not
 end-to-end verifier equivalence or a mathematical proof of equivalence.
 
+## Real accepted proof: first two consecutive rounds
+
+A separate test-only diagnostic hook in the *pinned upstream C++ checkout*
+records the first query's public parameter and statement serialization, its
+salt, and the first two rounds after C++ has verified the real accepted proof.
+The original C++ verifier's acceptance path is unchanged: hooks only log
+values after their ordinary calculations.
+
+The Rust `real_first_round` test binary then:
+
+1. Independently hashes the serialized parameter bytes with H(169,0,1)
+   and reconstructs the run value and first-query digest.
+2. Reads the 32-byte salt, the first 64-byte `SEND seed` message and the
+   next 96-byte `SEND answer` message directly from the **original proof**.
+3. Recomputes the exact transcript states rho_0, rho_1 and rho_2.
+4. Compares the first three extension-field challenges sampled by C++.
+5. Rejects mutations of the salt, each round's bytes, a truncated second
+   message, and the parameter serialization (five negative tests).
+
+The verified result was `REAL_FIRST_TWO_ROUNDS_OK`. The test rejects on
+disagreement, including under `tee` because the CI step uses `set -euo pipefail`.
+
+Evidence: https://github.com/qoosmo/rust-flashprove/actions/runs/42048102858
+The C++ hook must convert its internal `RoundKind` into the wire's
+`ChainKind`, e.g. `EMPTY` is 0 internally but 7 on the wire.
+
+This is **not** full verifier equivalence: the initial public parameters
+and statement are still serialized by upstream C++ and passed to Rust through
+the trace, not constructed from scratch in Rust. Only the first two rounds
+are replayed, and no Merkle opening, sub-proof equation or final proof
+decision is implemented in Rust.
+
 ## Local development
 
     cargo test -p flashprove-transcript
@@ -51,11 +83,9 @@ headers at the pinned commit. See differential-smoke.yml for the exact command.
 
 ## Next protocol work
 
-- Derive the real parameters' digest and request-stage first query from the
-  public configuration and accepted proof.
-- Parse the complete statement-dependent proof-body plan, and feed every
-  message/nonce into the transcript in exact order.
-- Compare the C++ and Rust challenge trace of the real accepted proof (not
-  merely a synthetic transcript).
+- Serialize real parameters and statement independently from public inputs
+  and the request's proof plan, without copying C++ binder bytes.
+- Parse subsequent proof rounds including file-only Merkle openings and
+  the next two chains; check every nonce, message, and challenge.
 - Verify Merkle openings, low-degree/sumcheck equations and key/leaf links.
 - Only then compare full acceptance and rejection decisions on a hostile corpus.
