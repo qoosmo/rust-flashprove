@@ -21,6 +21,9 @@ Independent repository; no Anthropic affiliation.
 - `flashprove-transcript`: H821 BLAKE2b domain hashes, first queries, Fiat–Shamir
   rounds, proof-of-work and challenge draws. Tested against upstream published vectors
   and the original C++ Chain implementation on a deterministic transcript.
+  CI also verifies the first two rounds of upstream's real accepted proof,
+  including three sampled challenges and five negative trace mutations.
+  The first-query serialization currently comes from C++ diagnostics.
 - `flashprove-format`: bounded, checked byte cursor, canonical field decoding, strict `H821`
   proof/key/leaf headers, typed proof envelope (opaque unverified body), request and next-token
   files (little-endian `u32`), initial policy version check.
@@ -28,8 +31,9 @@ Independent repository; no Anthropic affiliation.
 - `flashprove-cli`: inspection-only commands, plus explicitly unsupported `verify` command.
 - Two **exact upstream binary regression fixtures**, recovered from the pinned release.
 
-The binary proof file **has no length prefix**. Only the twelve-byte header is parsed at this
-stage; the proof body is not traversed, as decoding requires a planned chain of rounds.
+The binary proof file **has no length prefix**. Only the twelve-byte header is parsed by the public CLI at this
+stage. A separate differential-only test replays the first two rounds of the
+upstream fixture; general proof-body decoding still requires a planned chain.
 
 ## Commands
 
@@ -78,7 +82,7 @@ scripts/PUBLISH_TO_GITHUB.sh   Opt-in publication from a local machine with gh
 ```text
 Actual upstream H821 bytes → typed Rust file inputs (in progress)
     ↓
-Reference transcript and challenge draws (tested; real-proof integration open)
+Reference transcript + first two real-proof rounds (tested; remainder open)
     ↓
 Merkle/opening/lookup/IOP checks → complete Rust verifier (open)
     ↓
