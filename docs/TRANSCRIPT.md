@@ -29,6 +29,9 @@ This is independent Rust reference code, not a Rust proof verifier.
   protocol (H821 field 2).
 - crates/flashprove-transcript/src/bin/transcript_rust_oracle.rs independently
   constructs the same transcript and prints the same named states/draws.
+- Both oracles also hash the real accepted-proof public configuration files
+  (policy.txt, layout.txt and KL.bin) via R4.9; the resulting configuration
+  digest must match byte-for-byte before their synthetic transcript outputs.
 - GitHub Actions compiles both oracles on Linux and runs diff -u over their
   entire output, failing if any state or element differs.
 - The separate differential_smoke.py compares whole C++ proof decisions against
