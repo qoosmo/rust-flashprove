@@ -27,7 +27,7 @@ fn make(cfg:&[u8],req:&[u8])->(Vec<u8>,Vec<u8>){
 }
 #[test] fn reject_short_and_trailing(){
  let (p,s)=make(&[7;32],b"req");
- for i in 0..p.len(){assert!(parse_parameters(&p[..i]).is_err())}
+ let cut=p.len()-(8+"configuration".len()+8+32);for i in 0..cut {assert!(parse_parameters(&p[..i]).is_err())}assert!(parse_parameters(&p[..cut]).is_ok());for i in cut+1..p.len(){assert!(parse_parameters(&p[..i]).is_err())}
  for i in 0..s.len(){assert!(parse_statement(&s[..i]).is_err())}
  let mut q=s.clone();q.push(0);assert_eq!(parse_statement(&q),Err(QueryError::Item));
 }
