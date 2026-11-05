@@ -8,6 +8,9 @@ on:
       - 'tests/test_differential_smoke.py'
       - '.github/workflows/differential-smoke.yml'
       - 'crates/flashprove-cli/**'
+      - 'crates/flashprove-transcript/**'
+      - 'Cargo.toml'
+      - 'scripts/transcript_cpp_oracle.cpp'
 
 permissions:
   contents: read
@@ -34,6 +37,15 @@ jobs:
         run: |
           g++ --version
           (cd upstream-src && bash verifier/build.sh)
+      - name: Differential test against upstream C++ hash-chain implementation
+        run: |
+          g++ -std=c++17 -O2 -fno-ipa-modref -DBLK_FIELD=2 -DDIGEST_WORDS=8 \
+            -I upstream-src/blocks -I upstream-src/prover \
+            scripts/transcript_cpp_oracle.cpp -o cpp-transcript-oracle
+          cargo run --release -p flashprove-transcript --bin transcript_rust_oracle > rust-transcript.txt
+          ./cpp-transcript-oracle > cpp-transcript.txt
+          diff -u cpp-transcript.txt rust-transcript.txt
+          echo 'C++ and Rust transcript outputs agree exactly'
       - name: Compare C++ proof verdict with Rust structural inspection
         run: |
           python3 scripts/differential_smoke.py \
