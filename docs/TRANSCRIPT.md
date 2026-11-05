@@ -69,9 +69,39 @@ The C++ hook must convert its internal `RoundKind` into the wire's
 
 This is **not** full verifier equivalence: the initial public parameters
 and statement are still serialized by upstream C++ and passed to Rust through
-the trace, not constructed from scratch in Rust. Only the first two rounds
-are replayed, and no Merkle opening, sub-proof equation or final proof
-decision is implemented in Rust.
+the trace, not constructed from scratch in Rust. The first two rounds receive
+additional direct challenge checks; the complete first chain is replayed
+below, but neither Merkle openings nor final proof decisions are verified.
+
+## Full first-chain replay (all 8,037 rounds)
+
+`first_query::parse_parameters` checks the original H821 field-2 plan's
+serialized version, field and hash mode, 8,037 round entries and eight named
+public parameter items. `audit_public_query` independently hashes those
+serialized bytes and checks the configuration digest, request bytes, and
+stored-copy index against the accepted proof's real public files.
+
+The test-only instrumented upstream C++ Reader exposes the original proof
+offset and length of each field that the verifier absorbs into its first
+chain. `bulk_round_replay` separately reads each original proof slice,
+reconstructs each round's message, checks its H821 domain-168 message digest,
+reads and validates work nonces, and executes the independent Rust Fiat-Shamir
+hash step. It compares all 8,037 resulting states against C++.
+
+Result: **BULK_FIRST_CHAIN_ROUNDS_OK** on Anthropic's accepted fixture,
+8,037 / 8,037 transcript states equal. Four bulk mutation cases reject
+altered proof bytes, read offsets, C++ round state or message hash.
+
+Crucial limitation: **2,679,688 bytes of file-only material were skipped
+between the transcript's field reads**, through proof offset 3,160,036.
+These spans are *not* checked as Merkle openings or anything else. C++
+still supplies the public plan serialization and observed read offsets,
+although Rust validates their externally checkable bindings and recomputes
+every transcript-state hash. This is a trace-guided finite differential,
+not an independently parsing proof verifier, not full C++/Rust
+acceptance equivalence, and not a security theorem.
+
+Evidence: https://github.com/qoosmo/rust-flashprove/actions/runs/42064122802
 
 ## Local development
 
