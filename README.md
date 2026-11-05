@@ -18,6 +18,9 @@ Independent repository; no Anthropic affiliation.
 
 - `flashprove-field`: Goldilocks `Fp` (modulus `2^64 - 2^32 + 1`) and cubic `Ext3 = Fp[X]/(X^3-2)`.
   Straightforward reference arithmetic, not optimized or constant-time.
+- `flashprove-transcript`: H821 BLAKE2b domain hashes, first queries, Fiat–Shamir
+  rounds, proof-of-work and challenge draws. Tested against upstream published vectors
+  and the original C++ Chain implementation on a deterministic transcript.
 - `flashprove-format`: bounded, checked byte cursor, canonical field decoding, strict `H821`
   proof/key/leaf headers, typed proof envelope (opaque unverified body), request and next-token
   files (little-endian `u32`), initial policy version check.
@@ -53,6 +56,7 @@ replace that check.
 crates/
   flashprove-field/       Reference arithmetic + canonical encodings
   flashprove-format/      Checked reads, headers, request + token files
+  flashprove-transcript/  Byte-exact H821 hash chain and challenge sampler
   flashprove-verifier/    Fail-closed verifier API; no proof acceptance
   flashprove-cli/         Inspection tool
 
@@ -60,6 +64,7 @@ tests/vectors/            Pinned upstream small binary fixtures
 upstream/                 Exact upstream revision
 
 docs/ARCHITECTURE.md      Trust boundaries and scope
+docs/TRANSCRIPT.md        C++/Rust transcript compatibility evidence
 
 docs/VERIFIER_MAP.md      Grounded upstream mapping
 
@@ -73,7 +78,7 @@ scripts/PUBLISH_TO_GITHUB.sh   Opt-in publication from a local machine with gh
 ```text
 Actual upstream H821 bytes → typed Rust file inputs (in progress)
     ↓
-Planned transcript/field queries → checked Rust interpreter (open)
+Reference transcript and challenge draws (tested; real-proof integration open)
     ↓
 Merkle/opening/lookup/IOP checks → complete Rust verifier (open)
     ↓
