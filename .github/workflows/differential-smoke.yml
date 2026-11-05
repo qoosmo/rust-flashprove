@@ -40,7 +40,7 @@ jobs:
           git -C upstream-src checkout --detach 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
       - name: Attach read-only first-chain diagnostics to pinned C++ source
         run: python3 scripts/instrument_upstream_first_round.py upstream-src/blocks/chain/rounds.h
-      - name: Trace original proof byte offsets for first 512 real rounds
+      - name: Trace original proof byte offsets for first 8037 real rounds
         run: python3 scripts/instrument_upstream_round_events.py upstream-src/blocks/chain/rounds.h
       - name: Build upstream C++ verifier on Linux
         run: |
@@ -81,7 +81,7 @@ jobs:
             reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
             "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
             | tee reports/real-public-query-result.txt
-      - name: Replay 512 first-chain transcript states from original proof bytes
+      - name: Replay 8037 first-chain transcript states from original proof bytes
         run: |
           set -euo pipefail
           FIXTURE="$PWD/upstream-src/examples/accepted-proof"
@@ -89,7 +89,7 @@ jobs:
             reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
             "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
             | tee reports/bulk-round-replay-result.txt
-      - name: Reject corrupted proof and transcript entries in 512-round replay
+      - name: Reject corrupted proof and transcript entries in 8037-round replay
         run: |
           FIXTURE="$PWD/upstream-src/examples/accepted-proof"
           python3 scripts/bulk_round_negative.py \
