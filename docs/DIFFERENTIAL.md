@@ -25,15 +25,18 @@ scripts/differential_smoke.py on six cases.
 The report explicitly states full_rust_verification=false and
 semantic_equivalence_established=false.
 
-A separate component-level trace now compares **the first two real rounds** of
-upstream's accepted proof, including the Rust recomputation of the hash of
-C++-serialized parameters and three sampled extension-field challenges.
-The C++ hook is test-only; the Rust executable still performs no complete
-proof verification. See docs/TRANSCRIPT.md and the matching Linux CI job.
+A separate trace-guided differential now matches **all 8,037 first-chain
+Fiat-Shamir states** on the accepted proof, including round messages
+reassembled from actual proof bytes at C++-observed read offsets, work nonces,
+and three independently sampled challenges on the first round. The public
+first-query plan is parsed and audited from C++-serialized inputs. The test
+skips 2,679,688 bytes of file-only material which Rust has not validated.
 
-Next actual milestones: independently serialize public first-query inputs,
-parse and replay the remaining planned rounds with exact EOF consumption,
-key/leaf/commitment/opening checks, full Rust acceptance of upstream honest proof,
-then genuine verdict
-differentials over the mutation corpus. Finite tests do not prove universal
-semantic equivalence.
+The C++ hook is test-only; the Rust executable still performs no complete
+proof verification. See docs/TRANSCRIPT.md and the matching Linux CI job:
+https://github.com/qoosmo/rust-flashprove/actions/runs/42064122802
+
+Next: independently serialize the first query, decode and check file-only
+Merkle openings, replay the shared and second chains, implement
+key/leaf/commitment/equation checks, and only then compare genuine full
+acceptance decisions. Finite tests do not prove universal equivalence.
