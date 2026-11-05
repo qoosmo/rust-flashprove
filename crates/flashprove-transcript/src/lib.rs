@@ -148,6 +148,8 @@ pub enum RoundKind {
 }
 
 /// H821 round call C_i(j): 64 bytes, never silently reduced mod p.
+// Preserve the eight named protocol inputs for independent byte-level audit.
+#[allow(clippy::too_many_arguments)]
 pub fn round_call(
     label: u64,
     round: u64,
