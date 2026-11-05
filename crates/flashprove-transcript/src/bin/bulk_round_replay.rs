@@ -1,10 +1,10 @@
-//! Reassemble the first 64 genuine first-chain Fiat-Shamir messages from
+//! Reassemble the first 512 genuine first-chain Fiat-Shamir messages from
 //! *original proof bytes*, using C++-observed read offsets. Not a verifier.
 //! In particular, skipped file-only Merkle openings are not checked here.
 use flashprove_transcript::first_query::{audit, parameters_digest};
 use flashprove_transcript::{first_value, h, run_value, Chain, Digest, RoundKind};
 use std::{collections::BTreeMap, env, fs};
-const COUNT: usize = 64;
+const COUNT: usize = 512;
 
 fn from_hex(s: &str) -> Result<Vec<u8>, String> {
     if s.len() % 2 != 0 { return Err("odd hex".into()); }
