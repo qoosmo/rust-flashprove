@@ -11,6 +11,7 @@ on:
       - 'crates/flashprove-transcript/**'
       - 'Cargo.toml'
       - 'scripts/transcript_cpp_oracle.cpp'
+      - 'scripts/instrument_upstream_first_round.py'
 
 permissions:
   contents: read
@@ -33,6 +34,8 @@ jobs:
           git -C upstream-src sparse-checkout set verifier blocks prover examples/accepted-proof
           git -C upstream-src fetch --depth 1 origin 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
           git -C upstream-src checkout --detach 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+      - name: Attach read-only first-chain diagnostics to pinned C++ source
+        run: python3 scripts/instrument_upstream_first_round.py upstream-src/blocks/chain/rounds.h
       - name: Build upstream C++ verifier on Linux
         run: |
           g++ --version
@@ -52,6 +55,17 @@ jobs:
             upstream-src/examples/accepted-proof/config/KL.bin > cpp-transcript.txt
           diff -u cpp-transcript.txt rust-transcript.txt
           echo 'C++ and Rust transcript outputs agree exactly'
+      - name: Compare first real proof round and challenges byte-for-byte
+        run: |
+          mkdir -p reports
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          RUST_FLASH_TRACE_PATH="$PWD/reports/real-first-round.trace" \
+            "$PWD/upstream-src/bin/cp_verify" "$FIXTURE/config" "$FIXTURE/ivk" \
+              "$FIXTURE/example.req" "$FIXTURE/example.y" "$FIXTURE/example.proof" \
+              -id "$(cat "$FIXTURE/ID.txt")" -q
+          cargo run --release -p flashprove-transcript --bin real_first_round -- \
+            "$FIXTURE/example.proof" reports/real-first-round.trace \
+            | tee reports/real-first-round-result.txt
       - name: Compare C++ proof verdict with Rust structural inspection
         run: |
           python3 scripts/differential_smoke.py \
@@ -64,5 +78,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: differential-smoke-report
-          path: reports/differential-smoke.json
+          path: |
+            reports/differential-smoke.json
+            reports/real-first-round.trace
+            reports/real-first-round-result.txt
           if-no-files-found: warn
