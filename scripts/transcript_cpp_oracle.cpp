@@ -2,6 +2,10 @@
 // This is a component differential, NOT full verifier equivalence.
 // Built only against the exact upstream C++ source in GitHub Actions.
 #include <array>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
+#include <vector>
 #include <cstdio>
 #include <string>
 
@@ -21,7 +25,28 @@ static void print_ext(const char *name, const blk::E &e) {
               (unsigned long long)e.c[1].v,
               (unsigned long long)e.c[2].v);
 }
-int main() {
+static std::vector<blk::u8> read_bytes(const char *path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    std::fprintf(stderr, "cannot read %s\n", path);
+    std::exit(2);
+  }
+  return std::vector<blk::u8>(std::istreambuf_iterator<char>(input),
+                              std::istreambuf_iterator<char>());
+}
+int main(int argc, char **argv) {
+  if (argc != 4) {
+    std::fprintf(stderr, "usage: cpp-transcript-oracle POLICY LAYOUT SCALES\n");
+    return 2;
+  }
+  blk::Hasher configuration(blk::Tag(blk::Domain::PARAMETERS), 2);
+  configuration.push_u64(3);
+  for (int i=1; i<=3; ++i) {
+    const auto bytes = read_bytes(argv[i]);
+    configuration.push_u64((blk::u64)bytes.size());
+    configuration.push(bytes.data(), bytes.size());
+  }
+  print_digest("configuration", configuration.finish());
   std::array<blk::u8,32> param{}, salt{};
   for (unsigned i=0; i<32; ++i) {
     param[i] = (blk::u8)((7*i+3)%251);
