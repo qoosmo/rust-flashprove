@@ -13,6 +13,7 @@ on:
       - 'scripts/transcript_cpp_oracle.cpp'
       - 'scripts/instrument_upstream_first_round.py'
       - 'scripts/real_round_negative.py'
+      - 'scripts/public_query_negative.py'
 
 permissions:
   contents: read
@@ -76,6 +77,13 @@ jobs:
             reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
             "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
             | tee reports/real-public-query-result.txt
+      - name: Reject public configuration, request and first-query mutations
+        run: |
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          python3 scripts/public_query_negative.py \
+            target/release/audit_public_query reports/real-first-round.trace \
+            "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin"
       - name: Verify real-round replay rejects corrupted bytes and trace
         run: |
           python3 scripts/real_round_negative.py \
