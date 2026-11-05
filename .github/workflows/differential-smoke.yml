@@ -16,6 +16,7 @@ on:
       - 'scripts/public_query_negative.py'
       - 'scripts/instrument_upstream_round_events.py'
       - 'scripts/bulk_round_negative.py'
+      - 'scripts/analyze_first_chain_gaps.py'
 
 permissions:
   contents: read
@@ -89,6 +90,14 @@ jobs:
             reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
             "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
             | tee reports/bulk-round-replay-result.txt
+      - name: Identify unverified file-only records in real first chain
+        run: |
+          set -euo pipefail
+          python3 scripts/analyze_first_chain_gaps.py \
+            reports/real-first-round.trace \
+            upstream-src/examples/accepted-proof/example.proof \
+            reports/bulk-round-replay-result.txt \
+            | tee reports/first-chain-gaps.txt
       - name: Reject corrupted proof and transcript entries in 8037-round replay
         run: |
           FIXTURE="$PWD/upstream-src/examples/accepted-proof"
@@ -127,4 +136,5 @@ jobs:
             reports/real-first-round-result.txt
             reports/real-public-query-result.txt
             reports/bulk-round-replay-result.txt
+            reports/first-chain-gaps.txt
           if-no-files-found: warn
