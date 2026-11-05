@@ -18,6 +18,14 @@ Independent repository; no Anthropic affiliation.
 
 - `flashprove-field`: Goldilocks `Fp` (modulus `2^64 - 2^32 + 1`) and cubic `Ext3 = Fp[X]/(X^3-2)`.
   Straightforward reference arithmetic, not optimized or constant-time.
+- `flashprove-transcript`: H821 BLAKE2b domain hashes, first queries, Fiat–Shamir
+  rounds, proof-of-work and challenge draws. Tested against upstream published vectors
+  and the original C++ Chain implementation on a deterministic transcript.
+  The Linux differential harness also reconstructs **all 8,037 first-chain
+  transcript messages and states** on upstream's accepted proof, with work
+  nonces and strict mutation tests. It checks the first three real sampled
+  challenges separately. The first-query serialization and proof read offsets
+  currently come from C++ diagnostics, not independent Rust plan formation.
 - `flashprove-format`: bounded, checked byte cursor, canonical field decoding, strict `H821`
   proof/key/leaf headers, typed proof envelope (opaque unverified body), request and next-token
   files (little-endian `u32`), initial policy version check.
@@ -25,8 +33,10 @@ Independent repository; no Anthropic affiliation.
 - `flashprove-cli`: inspection-only commands, plus explicitly unsupported `verify` command.
 - Two **exact upstream binary regression fixtures**, recovered from the pinned release.
 
-The binary proof file **has no length prefix**. Only the twelve-byte header is parsed at this
-stage; the proof body is not traversed, as decoding requires a planned chain of rounds.
+The binary proof file **has no length prefix**. Only the twelve-byte header is parsed by the public CLI at this
+stage. A separate **test-only trace-guided differential** replays all 8,037
+first-chain transcript rounds from the accepted fixture but skips 2,679,688
+bytes of file-only records. No complete proof-body parser exists yet.
 
 ## Commands
 
@@ -53,6 +63,7 @@ replace that check.
 crates/
   flashprove-field/       Reference arithmetic + canonical encodings
   flashprove-format/      Checked reads, headers, request + token files
+  flashprove-transcript/  Byte-exact H821 hash chain and challenge sampler
   flashprove-verifier/    Fail-closed verifier API; no proof acceptance
   flashprove-cli/         Inspection tool
 
@@ -60,6 +71,7 @@ tests/vectors/            Pinned upstream small binary fixtures
 upstream/                 Exact upstream revision
 
 docs/ARCHITECTURE.md      Trust boundaries and scope
+docs/TRANSCRIPT.md        C++/Rust transcript compatibility evidence
 
 docs/VERIFIER_MAP.md      Grounded upstream mapping
 
@@ -73,7 +85,7 @@ scripts/PUBLISH_TO_GITHUB.sh   Opt-in publication from a local machine with gh
 ```text
 Actual upstream H821 bytes → typed Rust file inputs (in progress)
     ↓
-Planned transcript/field queries → checked Rust interpreter (open)
+Reference transcript + all 8,037 first-chain states (tested; two other chains open)
     ↓
 Merkle/opening/lookup/IOP checks → complete Rust verifier (open)
     ↓
@@ -84,7 +96,10 @@ Compare to the right Lean executable / formal spec (open)
 Prove selected correspondence lemmas (open)
 ```
 
-See [docs/MILESTONE.md](docs/MILESTONE.md) for verified vs. planned functionality.
+See [docs/MILESTONE.md](docs/MILESTONE.md),
+[docs/TRANSCRIPT.md](docs/TRANSCRIPT.md) and
+[docs/PUBLIC_INPUT_AUDIT.md](docs/PUBLIC_INPUT_AUDIT.md) for exact
+verified vs. planned functionality and limitations.
 
 ## Attribution and status
 

@@ -1,0 +1,140 @@
+name: Upstream C++ and Rust inspection smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/differential_smoke.py'
+      - 'tests/test_differential_smoke.py'
+      - '.github/workflows/differential-smoke.yml'
+      - 'crates/flashprove-cli/**'
+      - 'crates/flashprove-transcript/**'
+      - 'Cargo.toml'
+      - 'scripts/transcript_cpp_oracle.cpp'
+      - 'scripts/instrument_upstream_first_round.py'
+      - 'scripts/real_round_negative.py'
+      - 'scripts/public_query_negative.py'
+      - 'scripts/instrument_upstream_round_events.py'
+      - 'scripts/bulk_round_negative.py'
+      - 'scripts/analyze_first_chain_gaps.py'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check runner classification logic
+        run: python3 -m unittest discover -s tests -p 'test_differential_smoke.py' -v
+      - name: Build Rust inspection CLI
+        run: cargo build --release -p flashprove-cli
+      - name: Checkout pinned upstream C++ verifier and example
+        run: |
+          git clone --filter=blob:none --no-checkout --depth 1 https://github.com/anthropics/FlashProve.git upstream-src
+          git -C upstream-src sparse-checkout init --cone
+          git -C upstream-src sparse-checkout set verifier blocks prover examples/accepted-proof
+          git -C upstream-src fetch --depth 1 origin 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+          git -C upstream-src checkout --detach 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+      - name: Attach read-only first-chain diagnostics to pinned C++ source
+        run: python3 scripts/instrument_upstream_first_round.py upstream-src/blocks/chain/rounds.h
+      - name: Trace original proof byte offsets for first 8037 real rounds
+        run: python3 scripts/instrument_upstream_round_events.py upstream-src/blocks/chain/rounds.h
+      - name: Build upstream C++ verifier on Linux
+        run: |
+          g++ --version
+          (cd upstream-src && bash verifier/build.sh)
+      - name: Differential test against upstream C++ hash-chain implementation
+        run: |
+          g++ -std=c++17 -O2 -fno-ipa-modref -DBLK_FIELD=2 -DDIGEST_WORDS=8 \
+            -I upstream-src/blocks -I upstream-src/prover \
+            scripts/transcript_cpp_oracle.cpp -o cpp-transcript-oracle
+          cargo run --release -p flashprove-transcript --bin transcript_rust_oracle -- \
+            upstream-src/examples/accepted-proof/config/policy.txt \
+            upstream-src/examples/accepted-proof/config/layout.txt \
+            upstream-src/examples/accepted-proof/config/KL.bin > rust-transcript.txt
+          ./cpp-transcript-oracle \
+            upstream-src/examples/accepted-proof/config/policy.txt \
+            upstream-src/examples/accepted-proof/config/layout.txt \
+            upstream-src/examples/accepted-proof/config/KL.bin > cpp-transcript.txt
+          diff -u cpp-transcript.txt rust-transcript.txt
+          echo 'C++ and Rust transcript outputs agree exactly'
+      - name: Compare first two real proof rounds and challenges byte-for-byte
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          RUST_FLASH_TRACE_PATH="$PWD/reports/real-first-round.trace" \
+            "$PWD/upstream-src/bin/cp_verify" "$FIXTURE/config" "$FIXTURE/ivk" \
+              "$FIXTURE/example.req" "$FIXTURE/example.y" "$FIXTURE/example.proof" \
+              -id "$(cat "$FIXTURE/ID.txt")" -q
+          cargo run --release -p flashprove-transcript --bin real_first_round -- \
+            "$FIXTURE/example.proof" reports/real-first-round.trace \
+            | tee reports/real-first-round-result.txt
+      - name: Validate real public first-query plan and external file bindings
+        run: |
+          set -euo pipefail
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          cargo run --release -p flashprove-transcript --bin audit_public_query -- \
+            reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
+            | tee reports/real-public-query-result.txt
+      - name: Replay 8037 first-chain transcript states from original proof bytes
+        run: |
+          set -euo pipefail
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          cargo run --release -p flashprove-transcript --bin bulk_round_replay -- \
+            reports/real-first-round.trace "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin" \
+            | tee reports/bulk-round-replay-result.txt
+      - name: Identify unverified file-only records in real first chain
+        run: |
+          set -euo pipefail
+          python3 scripts/analyze_first_chain_gaps.py \
+            reports/real-first-round.trace \
+            upstream-src/examples/accepted-proof/example.proof \
+            reports/bulk-round-replay-result.txt \
+            | tee reports/first-chain-gaps.txt
+      - name: Reject corrupted proof and transcript entries in 8037-round replay
+        run: |
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          python3 scripts/bulk_round_negative.py \
+            target/release/bulk_round_replay reports/real-first-round.trace \
+            "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin"
+      - name: Reject public configuration, request and first-query mutations
+        run: |
+          FIXTURE="$PWD/upstream-src/examples/accepted-proof"
+          python3 scripts/public_query_negative.py \
+            target/release/audit_public_query reports/real-first-round.trace \
+            "$FIXTURE/example.proof" "$FIXTURE/example.req" \
+            "$FIXTURE/config/policy.txt" "$FIXTURE/config/layout.txt" "$FIXTURE/config/KL.bin"
+      - name: Verify real-round replay rejects corrupted bytes and trace
+        run: |
+          python3 scripts/real_round_negative.py \
+            target/release/real_first_round \
+            upstream-src/examples/accepted-proof/example.proof \
+            reports/real-first-round.trace
+      - name: Compare C++ proof verdict with Rust structural inspection
+        run: |
+          python3 scripts/differential_smoke.py \
+            --upstream upstream-src \
+            --cpp upstream-src/bin/cp_verify \
+            --rust target/release/flashprove \
+            --json-out reports/differential-smoke.json
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: differential-smoke-report
+          path: |
+            reports/differential-smoke.json
+            reports/real-first-round.trace
+            reports/real-first-round-result.txt
+            reports/real-public-query-result.txt
+            reports/bulk-round-replay-result.txt
+            reports/first-chain-gaps.txt
+          if-no-files-found: warn
