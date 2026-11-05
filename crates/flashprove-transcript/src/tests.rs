@@ -127,6 +127,18 @@ fn first_query_and_full_six_round_toy_against_upstream() {
 }
 
 #[test]
+fn configuration_digest_toy_file_matches_upstream() {
+    assert_eq!(
+        configuration_digest(&[b"toy\n"]).unwrap(),
+        digest("e7b508817ead50bb3f386f68d442b114119e93e8ef2b14a7d70190075348db5f")
+    );
+    assert_ne!(
+        configuration_digest(&[b"toy\n"]).unwrap(),
+        configuration_digest(&[b"toy"]).unwrap()
+    );
+}
+
+#[test]
 fn domain_and_work_rejections_are_fail_closed() {
     let rho = [0_u8; 32];
     assert_eq!(h(177, 0, 0, None, b"", None), Err(TranscriptError::InvalidDomain(177)));
