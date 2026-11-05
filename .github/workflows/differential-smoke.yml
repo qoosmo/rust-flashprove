@@ -12,6 +12,7 @@ on:
       - 'Cargo.toml'
       - 'scripts/transcript_cpp_oracle.cpp'
       - 'scripts/instrument_upstream_first_round.py'
+      - 'scripts/real_round_negative.py'
 
 permissions:
   contents: read
@@ -66,6 +67,12 @@ jobs:
           cargo run --release -p flashprove-transcript --bin real_first_round -- \
             "$FIXTURE/example.proof" reports/real-first-round.trace \
             | tee reports/real-first-round-result.txt
+      - name: Verify real-round replay rejects corrupted bytes and trace
+        run: |
+          python3 scripts/real_round_negative.py \
+            target/release/real_first_round \
+            upstream-src/examples/accepted-proof/example.proof \
+            reports/real-first-round.trace
       - name: Compare C++ proof verdict with Rust structural inspection
         run: |
           python3 scripts/differential_smoke.py \
