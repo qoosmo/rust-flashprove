@@ -6,6 +6,8 @@
 //! Not a proof verifier: this crate does not bind a public statement, plan,
 //! proof-body layout, Merkle openings, or commitment checks.
 
+pub mod first_query;
+
 use blake2b_simd::Params;
 use flashprove_field::{Ext3, Fp, MODULUS};
 use std::fmt;
