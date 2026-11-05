@@ -42,8 +42,14 @@ jobs:
           g++ -std=c++17 -O2 -fno-ipa-modref -DBLK_FIELD=2 -DDIGEST_WORDS=8 \
             -I upstream-src/blocks -I upstream-src/prover \
             scripts/transcript_cpp_oracle.cpp -o cpp-transcript-oracle
-          cargo run --release -p flashprove-transcript --bin transcript_rust_oracle > rust-transcript.txt
-          ./cpp-transcript-oracle > cpp-transcript.txt
+          cargo run --release -p flashprove-transcript --bin transcript_rust_oracle -- \
+            upstream-src/examples/accepted-proof/config/policy.txt \
+            upstream-src/examples/accepted-proof/config/layout.txt \
+            upstream-src/examples/accepted-proof/config/KL.bin > rust-transcript.txt
+          ./cpp-transcript-oracle \
+            upstream-src/examples/accepted-proof/config/policy.txt \
+            upstream-src/examples/accepted-proof/config/layout.txt \
+            upstream-src/examples/accepted-proof/config/KL.bin > cpp-transcript.txt
           diff -u cpp-transcript.txt rust-transcript.txt
           echo 'C++ and Rust transcript outputs agree exactly'
       - name: Compare C++ proof verdict with Rust structural inspection
