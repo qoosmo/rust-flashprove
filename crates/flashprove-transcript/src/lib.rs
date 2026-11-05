@@ -108,6 +108,18 @@ fn valid_label(label: u64) -> Result<(), TranscriptError> {
     }
 }
 
+/// R4.9 configuration digest over the ordered public configuration files:
+/// policy, layout, scale, each with an eight-byte LE length.
+pub fn configuration_digest(files: &[&[u8]]) -> Result<Digest, TranscriptError> {
+    let mut bytes = Vec::new();
+    push_u64(&mut bytes, u64::try_from(files.len()).map_err(|_| TranscriptError::OversizeMessage)?);
+    for file in files {
+        push_u64(&mut bytes, u64::try_from(file.len()).map_err(|_| TranscriptError::OversizeMessage)?);
+        bytes.extend_from_slice(file);
+    }
+    Ok(as_digest(h(169, 0, 2, None, &bytes, None)?))
+}
+
 /// H(172, 0, label, none; parameters, random bytes).
 pub fn run_value(label: u64, parameters: &Digest, random_bytes: &Digest) -> Result<Digest, TranscriptError> {
     valid_label(label)?;
