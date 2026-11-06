@@ -78,16 +78,16 @@ own faults, ported as `debug_assert` + fail-closed errors).
 | S0 ✔ | `shapes`: Codes, LinShape, FoldeqShape, IoppStage | lin.h, foldeq.h, iopp.h, context.h | bound bytes round-trip; faults |
 | S1 ✔ | `ext`: E arithmetic, inner products, eq tables, products | field.h, mle.h, tensor.h (eq parts) | via notes 0–6 |
 | S2 ◐ | `claims`: groups' claim targets in `begin_run` order (PLAIN as added, samples by member as sent, GENERATOR as added), once-only test ✔; `tensor`: Tensor, Form, frozen parts ✔; `relation`: Row, Run, Statement (verifier), GroupLayout, `add_to_group_row`, `VectorLay` ✔ (semantics in `docs/PORT_NOTES.md`) | relation.h, tensor.h | via notes 7, 26 ✔; coefficient side by unit tests against written-out vectors |
-| S3 | `send`: notices → trees, sample seeds, answers, pads (`Send::pad`, `vector_lay`, `vector_room`) | send.h, foldeq.h | completes `lin_fault` / `foldeq_fault` |
+| S3 ◐ | `send`: cube, pads, sample claim form, `admit_all` ✔; seeds from draws and `vector_room` pending | send.h, foldeq.h | form against its definition (unit test) |
 | S4 ◐ | `foldeq`: record parse, weights, (Rec) targets, (Col) symbols, generator row ✔; record seeds and the full rows wait for S2 | foldeq.h | notes 0–4 ✔ |
 | S5 ◐ | `lin`: lin_fold_row coefficients ✔; SPLIT targets ($s$, $t-s$) ✔; the halves' coefficients wait for S2 | lin.h, split.h | notes 5–6 ✔ |
 | S6 ◐ | `bat`: batch target ✔; `bat::combine` (coefficients, via `add_to_group_row`) ✔, fed once SEND's sample rows (S3) and FOLDEQ's/LIN's full rows exist | bat.h | notes 7, 26 ✔ |
 | S7 ◐ | `fold`: running claim ✔, `fold_output` (c fixed and frozen, kept factor, mask form, mask weights), shape and row checks ✔ | fold.h, fold_rounds.h, fold_algebra.h | notes 8, 27 ✔; 16, 35 follow CS |
-| S8 | `cs`: code switch (samples, opened symbols, next row) | cs.h | notes 9–15, 17–23, 28–34, 36–42 |
+| S8 ◐ | `cs`: single rows' symbols at the first draw ✔; next group's claims (`switch_rows`) pending | cs.h, single_rows.h | notes 9–11, 28–30 ✔; 12–15, 31–34 need the claims' coefficients |
 | S9 | `base`: BASE checks (the two refusals) | base_case.h | notes 24–25, 43–44 |
 | S10 | integrate into `proof_walk` → `shared_chain_verified` | iopp.h, lin.h | all 45; negative corpus on algebraic bytes |
 
-Progress: `shared_chain_check` reproduces notes 0–8, 26 and 27 (11 of 45) from the native walk's own draws and
+Progress: `shared_chain_check` reproduces notes 0–11 and 26–30 (17 of 45) from the native walk's own draws and
 openings, compared with upstream in CI. Each round's verifier message is kept as a `Draw` positioned
 after its positions, so later blocks draw in the reference's order (an invariant: one draw per round).
 

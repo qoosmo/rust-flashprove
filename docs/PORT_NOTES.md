@@ -74,4 +74,28 @@ Values are exact field elements; when the order of products differs from the C++
 - Not yet driven: the `GroupRow` that `fold_output` consumes needs every claim's coefficients,
   and the sample rows come from SEND (S3, send.h).
 
-## Next: SEND sample rows (send.h, S3), then CS (cs.h:721)
+## `blocks/iop/send.h` → `flashprove-iop/src/send.rs`
+
+- Cube: $a$ = table bits for one table; with both tables $a = \max(A_m, A_z) + 1$, the top bit 1
+  for the mask table, with zeros between. `front` = $z_{a-1}$ (mask) or $1 - z_{a-1}$ (main), times
+  $\prod (1 - z_t)$ for $t$ from the table's bits up to $a - 2$.
+- Pad: the last `answers` entries (×3 over F, with basis $\theta^t$) of the last real mask row, or of
+  the last main row if there are no mask rows; index `(rows-1) + (place << row_bits)`.
+- Form for answer $i$: $\mathrm{eq}(\cdot, z)\cdot$front on each table, plus units on the pads equal to
+  $(\beta\theta^t[\text{own}] - \text{eq value})$, so a pad's total is $\beta\theta^t$ or $0$.
+- Seeds (`SeedDraw::seed`): per answer number, $a$ plain draws then $\beta$ nonzero; all messages
+  of one round share the seeds (z of the largest cube).
+
+## `cs.h` / `single_rows.h` (read side) → `shared_chain_check`
+
+- `single_rows_symbols`: at each listed position, $y$ = [main rows (laid at `main_first`, zero
+  elsewhere) folded at $g_1..g_k$; kept rows as they are; old mask rows folded at $g_1..g_h$; the fresh
+  mask's $2^h$ rows folded at $g_1..g_h$].
+- Columns (`TreeBook::sort_out`): a leaf is main symbols of every part, then mask symbols of
+  every part. A tree is read at `x mod 2^{log_n(tree)}`. An E row is 3 consecutive F symbols.
+- Shared chain: test_u CS (round 17) reads tree 0 = [G_u: 18 E rows | fresh fold mask: 1 mask
+  row] and tree 2 = [split mask]. test_omega CS (round 32) reads tree 1 = [Omega: 4 E rows], tree 2
+  and tree 5 = [fresh fold mask].
+
+## Next: the claims' coefficient side (FOLDEQ Rec/Col rows, LIN Fold split halves, sample rows
+from the draws) feeding `bat::combine`, then `switch_rows` (cs.h:376) for notes 12–15

@@ -14,6 +14,7 @@
 //! * [`relation`]: linear claims (`Row`), group layouts, the verifier's
 //!   `Statement`, `add_to_group_row` and `VectorLay` (`blocks/iop/relation.h`,
 //!   `foldeq.h`).
+//! * [`send`]: SEND's sample claims and pads (`blocks/iop/send.h`).
 //! * [`bat`]: BAT's batched claim on a group (`blocks/iop/bat.h`).
 //! * [`fold`]: FOLD's running claim, output claim and mask weights
 //!   (`blocks/iop/fold.h`, `fold_rounds.h`, `fold_algebra.h`).
@@ -29,6 +30,7 @@ pub mod fold;
 pub mod foldeq;
 pub mod lin;
 pub mod relation;
+pub mod send;
 pub mod shapes;
 pub mod tensor;
 

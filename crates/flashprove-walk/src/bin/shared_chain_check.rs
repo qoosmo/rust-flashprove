@@ -6,7 +6,7 @@
 //! block-by-block notes (`VerifierContext::notes`) record for the shared chain,
 //! from the walk's draws and openings only. With --compare-notes, compares them
 //! with upstream's (tests/vectors/accepted-proof.notes.txt) AFTER computing.
-//! Ported so far: notes 0-8, 26, 27 (FOLDEQ, LIN, BAT, first FOLD of each test). Not a verdict: no block's claims are
+//! Ported so far: notes 0-11, 26-30 (FOLDEQ, LIN, BAT, first FOLD, first CS symbols). Not a verdict: no block's claims are
 //! tested yet; that happens at BASE.
 use flashprove_field::{Ext3 as E, Fp};
 use flashprove_iop::claims;
@@ -269,7 +269,7 @@ fn run(args: &[String]) -> Result<(), String> {
     // FOLD (fold_start_verify, fold_rounds_verify): the FOLD epsilon round's message ends with
     // the hiding sum (after the fresh mask's root when the mask was not sent ahead), its draw is
     // eps; then k FOLD rounds, each (c0, c2) then g. The running claim starts at sum + eps * t.
-    let fold_target = |eps_round: usize, k: u32, target: E| -> Result<E, String> {
+    let fold_target = |eps_round: usize, k: u32, target: E| -> Result<(E, Vec<E>), String> {
         let rr = &shared.rounds[eps_round - 1];
         if rr.name != "FOLD epsilon" {
             return Err(format!(
@@ -290,6 +290,7 @@ fn run(args: &[String]) -> Result<(), String> {
             .ok_or("no FOLD epsilon draw")?;
         let eps = de.extension().map_err(|e| e.to_string())?;
         let mut claim = fold::FoldVerifierRounds::new(sum, eps, target);
+        let mut gamma = Vec::new();
         for j in 0..k as usize {
             let r = eps_round + 1 + j;
             if shared.rounds[r - 1].name != "FOLD round" {
@@ -303,17 +304,105 @@ fn run(args: &[String]) -> Result<(), String> {
                 _ => return Err(format!("FOLD round {r} sends exactly two elements")),
             };
             let mut dg = shared.draw(r as u64).ok_or("no FOLD round draw")?;
-            claim.round(c0, c2, dg.extension().map_err(|e| e.to_string())?);
+            let g = dg.extension().map_err(|e| e.to_string())?;
+            claim.round(c0, c2, g);
+            gamma.push(g);
         }
         if shared.rounds[eps_round + k as usize].name == "FOLD round" {
             return Err("more FOLD rounds than the stage's k".into());
         }
-        Ok(claim.claim())
+        Ok((claim.claim(), gamma))
     };
     let ku = shape.test_u.first().ok_or("test_u has no stage")?.k;
     let ko = shape.test_omega.first().ok_or("test_omega has no stage")?.k;
-    all.push((8, "FOLD:_target", fold_target(10, ku, bat_u)?));
-    all.push((27, "FOLD:_target", fold_target(28, ko, bat_omega)?));
+    let (fold_u, gamma_u) = fold_target(10, ku, bat_u)?;
+    let (fold_o, gamma_o) = fold_target(28, ko, bat_omega)?;
+    all.push((8, "FOLD:_target", fold_u));
+    all.push((27, "FOLD:_target", fold_o));
+    // CS (switch_verify, single_rows_symbols): the single rows' symbols at the CS round's first
+    // draw x. Each group has one main member (rows over E, from row 0) and one old mask row
+    // (h = 0); the fresh fold mask is the third row. A tree with log_n below the list's is read
+    // at x mod 2^log_n (short_position).
+    let opened = |after: u64, tree: u32| {
+        shared
+            .openings
+            .iter()
+            .find(|o| o.after_round == after && o.tree == tree)
+            .ok_or(format!("no opening of tree {tree} after round {after}"))
+    };
+    let symbols =
+        |after: u64, tree: u32, x: u64, from: usize, n: usize| -> Result<Vec<E>, String> {
+            let o = opened(after, tree)?;
+            let at = o.list.iter().position(|&p| p == x).ok_or(format!(
+                "position {x} not in the list of tree {tree} after round {after}"
+            ))?;
+            let col = &o.columns[at * o.width..(at + 1) * o.width];
+            if from + 3 * n > o.width {
+                return Err(format!(
+                    "tree {tree}: the column is narrower than the rows read"
+                ));
+            }
+            Ok((0..n)
+                .map(|b| {
+                    E([
+                        col[from + 3 * b],
+                        col[from + 3 * b + 1],
+                        col[from + 3 * b + 2],
+                    ])
+                })
+                .collect())
+        };
+    // (CS round, k, h, gamma, main tree and its main rows, old mask tree, fresh tree and offset)
+    let cs_y = |cs: u64,
+                k: u32,
+                h: u32,
+                gamma: &[E],
+                main: (u32, usize),
+                old: u32,
+                fresh: (u32, usize),
+                logs: (u32, u32, u32)|
+     -> Result<[E; 3], String> {
+        if h != 0 {
+            return Err("CS: only h = 0 is ported (one old mask row)".into());
+        }
+        let x = *opened(cs, main.0)?.draw_list.first().ok_or("CS: no draw")?;
+        let short = |lg: u32| x & ((1_u64 << lg) - 1);
+        let mut rows = symbols(cs, main.0, short(logs.0), 0, main.1)?;
+        rows.resize(1 << k, E::ZERO);
+        let y_main = fold::fold_low(rows, gamma, k)[0];
+        let y_0 = symbols(cs, old, short(logs.1), 0, 1)?[0];
+        let y_1 = symbols(cs, fresh.0, short(logs.2), fresh.1, 1)?[0];
+        Ok([y_main, y_0, y_1])
+    };
+    // test_u, CS at round 17: G_u is tree 0 part 0 (18 rows over E, 54 symbols), the fresh fold
+    // mask tree 0 part 1 (mask symbols after them), the shared split mask tree 2.
+    let yu = cs_y(
+        17,
+        ku,
+        shape.test_u[0].h,
+        &gamma_u,
+        (0, 18),
+        2,
+        (0, 54),
+        (17, 13, 17),
+    )?;
+    // test_omega, CS at round 32: Omega is tree 1 (4 rows over E), the split mask tree 2, the
+    // fresh fold mask tree 5 (sent in round 28).
+    let yo = cs_y(
+        32,
+        ko,
+        shape.test_omega[0].h,
+        &gamma_o,
+        (1, 4),
+        2,
+        (5, 0),
+        (18, 13, 13),
+    )?;
+    for (base, y) in [(9, yu), (28, yo)] {
+        all.push((base, "CS:_y_main_at_the_first_draw", y[0]));
+        all.push((base + 1, "CS:_y_0_at_the_first_draw", y[1]));
+        all.push((base + 2, "CS:_y_1_at_the_first_draw", y[2]));
+    }
     all.sort_by_key(|n| n.0);
     println!(
         "SHARED_CHAIN_CHECK walk=OK table_rows={rows} k_col={} k_lo={} first_draw={x}",
@@ -349,12 +438,12 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         println!(
-            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, both BAT and first FOLD targets: all equal)",
+            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, BAT, first FOLD, CS symbols at the first draw: all equal)",
             all.len(),
             cpp.len()
         );
     }
-    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega) pending=SEND_sample_rows,group_row_coefficients,CS,BASE");
+    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega),first_CS_symbols(test_u,test_omega) pending=group_row_coefficients,CS_target,BASE");
     Ok(())
 }
 
