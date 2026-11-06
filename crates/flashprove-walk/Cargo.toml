@@ -1,0 +1,14 @@
+[package]
+name = "flashprove-walk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Native sequential proof cursor over H821 chains: rounds, nonces, roots, positions and Merkle openings"
+
+[dependencies]
+flashprove-field = { path = "../flashprove-field" }
+flashprove-transcript = { path = "../flashprove-transcript" }
+flashprove-merkle = { path = "../flashprove-merkle" }
+flashprove-iop = { path = "../flashprove-iop" }

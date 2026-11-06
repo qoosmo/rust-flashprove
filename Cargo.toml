@@ -4,6 +4,9 @@ members = [
     "crates/flashprove-format",
     "crates/flashprove-transcript",
     "crates/flashprove-verifier",
+    "crates/flashprove-merkle",
+    "crates/flashprove-walk",
+    "crates/flashprove-iop",
     "crates/flashprove-cli",
 ]
 resolver = "2"

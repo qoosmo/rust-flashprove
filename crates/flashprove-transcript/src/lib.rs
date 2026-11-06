@@ -253,6 +253,7 @@ impl Chain {
 }
 
 /// Draws the verifier's message using the exact B_0, B_1, ... ordering.
+#[derive(Clone, Debug)]
 pub struct Draw {
     label: u64,
     round: u64,

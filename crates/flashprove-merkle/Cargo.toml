@@ -1,0 +1,12 @@
+[package]
+name = "flashprove-merkle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "H821 Merkle openings: oracle-tree shapes, position lists, leaf and vertex hashes, the walk, and the per-root record of vertex values"
+
+[dependencies]
+flashprove-field = { path = "../flashprove-field" }
+flashprove-transcript = { path = "../flashprove-transcript" }

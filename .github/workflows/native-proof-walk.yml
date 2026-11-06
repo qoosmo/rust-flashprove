@@ -1,0 +1,122 @@
+name: Native whole-proof walk (D6, D8) and Merkle openings
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'scripts/instrument_upstream_*.py'
+      - 'scripts/extract_proof_inputs.py'
+      - 'scripts/proof_negative.py'
+      - 'scripts/points_cpp_oracle.cpp'
+      - 'tests/vectors/**'
+      - 'tests/vectors/accepted-proof.proof.schedule'
+      - '.github/workflows/native-proof-walk.yml'
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_SHA: 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
+
+jobs:
+  walk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Rust quality gate (new crates)
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2021 --check crates/flashprove-merkle/src/*.rs crates/flashprove-walk/src/*.rs crates/flashprove-walk/src/bin/*.rs crates/flashprove-iop/src/*.rs
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo build --release -p flashprove-walk
+      - name: Checkout pinned upstream twice (clean reference, test-only instrumented copy)
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/anthropics/FlashProve.git upstream-src
+          git -C upstream-src sparse-checkout init --cone
+          git -C upstream-src sparse-checkout set verifier blocks prover examples/accepted-proof
+          git -C upstream-src checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream-src rev-parse HEAD)" = "$UPSTREAM_SHA"
+          cp -a upstream-src upstream-instr
+      - name: Build the clean reference verifier (the verdict oracle)
+        run: |
+          set -euo pipefail
+          (cd upstream-src && bash verifier/build.sh) | tail -n 1
+      - name: Build the test-only instrumented verifier (diagnostics only)
+        run: |
+          set -euo pipefail
+          python3 scripts/instrument_upstream_openings.py upstream-instr
+          python3 scripts/instrument_upstream_all_chains.py upstream-instr
+          python3 scripts/instrument_upstream_notes.py upstream-instr
+          (cd upstream-instr && bash verifier/build.sh) | tail -n 1
+      - name: C++ diagnostics on the accepted proof (one log per stage process)
+        run: |
+          set -euo pipefail
+          mkdir -p reports/logs
+          F="$PWD/upstream-src/examples/accepted-proof"
+          out=$(RUSTFLASH_NOTES_LOG="$PWD/reports/logs/notes" RUSTFLASH_CHAINS_LOG="$PWD/reports/logs/chains" RUSTFLASH_OPENINGS_LOG="$PWD/reports/logs/openings" \
+            upstream-instr/bin/cp_verify "$F/config" "$F/ivk" "$F/example.req" "$F/example.y" "$F/example.proof" -id "$(cat "$F/ID.txt")" -q)
+          test "$(printf '%s\n' "$out" | tail -n 1)" = "YES"
+          chains=$(grep -l '^chain label=46524d01 ' reports/logs/chains.*)
+          pid="${chains##*.}"
+          echo "request stage: pid $pid"
+          cp "reports/logs/chains.$pid" reports/request-chains.log
+          cp "reports/logs/openings.$pid" reports/request-openings.log
+          python3 scripts/extract_proof_inputs.py reports/request-chains.log reports/request-openings.log "$F/example.proof" reports/inputs
+          diff -u tests/vectors/accepted-proof.proof.schedule reports/inputs/proof.schedule
+          echo "opening schedule equals the committed vector"
+          diff -u tests/vectors/accepted-proof.notes.txt "reports/logs/notes.$pid"
+          echo "block-by-block notes (134) equal the committed vector"
+      - name: Differential test of the evaluation points against upstream gl64_point
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -O2 -DBLK_FIELD=2 -DDIGEST_WORDS=8 -I upstream-src/blocks scripts/points_cpp_oracle.cpp -o points-oracle
+          ./points-oracle | diff -u tests/vectors/gl64-points.txt -
+          echo "48 evaluation points equal upstream; the Rust test checks the same vector"
+      - name: Native walk of the whole proof, every opening verified, then compared with C++
+        run: |
+          set -euo pipefail
+          F="$PWD/upstream-src/examples/accepted-proof"
+          target/release/proof_walk "$F/example.proof" "$F/example.req" \
+            "$F/config/policy.txt" "$F/config/layout.txt" "$F/config/KL.bin" \
+            reports/inputs tests/vectors/accepted-proof.proof.schedule \
+            --compare-chains reports/request-chains.log --compare-openings reports/request-openings.log \
+            | tee reports/proof-walk.txt
+          grep -qx 'NATIVE_PROOF_WALK_OK' reports/proof-walk.txt
+          grep -qx 'unaccounted_bytes=0' reports/proof-walk.txt
+          grep -q '^SHARED_CHAIN_VERIFIED notes=45 ' reports/proof-walk.txt
+          grep -q '^cpp_chains_compared=3 rounds=8095 ' reports/proof-walk.txt
+          grep -q '^cpp_openings_compared=35 ' reports/proof-walk.txt
+      - name: Shared chain, ported blocks, values equal upstream's notes
+        run: |
+          set -euo pipefail
+          F="$PWD/upstream-src/examples/accepted-proof"
+          target/release/shared_chain_check "$F/example.proof" "$F/example.req" \
+            "$F/config/policy.txt" "$F/config/layout.txt" "$F/config/KL.bin" \
+            reports/inputs tests/vectors/accepted-proof.proof.schedule \
+            --compare-notes tests/vectors/accepted-proof.notes.txt | tee reports/shared-chain-check.txt
+          grep -q '^cpp_notes_compared=45 of 45 ' reports/shared-chain-check.txt
+          grep -q '^SHARED_CHAIN_ALGEBRA_OK ' reports/shared-chain-check.txt
+      - name: Negative corpus (Rust must reject; clean C++ must not say YES)
+        run: |
+          set -euo pipefail
+          python3 scripts/proof_negative.py target/release/proof_walk upstream-src/bin/cp_verify \
+            upstream-src/examples/accepted-proof reports/inputs tests/vectors/accepted-proof.proof.schedule \
+            --json reports/proof-negative.json | tee reports/proof-negative.txt
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-proof-walk
+          path: reports/
+          if-no-files-found: warn
