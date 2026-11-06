@@ -31,3 +31,21 @@ length. Plan data, generated from test-only C++ diagnostics by
 `scripts/extract_proof_inputs.py`, and regenerated and diffed in CI. It holds
 no offset, length, root value, position or digest: `proof_walk` finds those
 itself. Stage D7 replaces this file with native plan derivation.
+
+## `shared-chain.codes.hex`, `shared-chain.lin-shape.hex`
+
+The shared chain's bound parameter items `codes` and `the test on the table`
+(the `LinShape`), copied from its serialized first query. `flashprove-iop`
+parses them and checks that re-serializing gives back exactly these bytes.
+
+## `gl64-points.txt`
+
+`log_n position point` for 48 positions, printed by upstream's `gl64_point`
+(`scripts/points_cpp_oracle.cpp`); regenerated and diffed in CI.
+
+## `accepted-proof.notes.txt`
+
+Upstream's own block-by-block comparison notes (`VerifierContext::notes`) for
+the accepted proof's three chains (68 + 45 + 21), produced by
+`scripts/instrument_upstream_notes.py`; regenerated and diffed in CI. Each port
+step of `docs/SHARED_CHAIN_MAP.md` must reproduce its notes exactly.
