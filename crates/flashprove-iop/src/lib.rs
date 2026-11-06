@@ -13,6 +13,7 @@
 //! Every parser here rejects trailing bytes and any non-canonical encoding:
 //! re-serializing a parsed value gives back exactly the input bytes.
 
+pub mod claims;
 pub mod code;
 pub mod ext;
 pub mod foldeq;

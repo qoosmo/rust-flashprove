@@ -9,6 +9,7 @@
 //! Ported so far: FOLDEQ (notes 0-4). Not a verdict: no block's claims are
 //! tested yet; that happens at BASE.
 use flashprove_field::{Ext3 as E, Fp};
+use flashprove_iop::claims;
 use flashprove_iop::code::Codes;
 use flashprove_iop::foldeq;
 use flashprove_iop::shapes::LinShape;
@@ -168,6 +169,79 @@ fn run(args: &[String]) -> Result<(), String> {
         .map(|_| dz.extension())
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string())?;
+    // BAT on G_u's group: x from round 9; claims in begin_run() order.
+    let msg = |r: usize| -> &[u8] {
+        let rr = &shared.rounds[r - 1];
+        &proof[rr.message_offset..rr.message_offset + rr.message_bytes]
+    };
+    for (r, name) in [
+        (3, "SEND answer"),
+        (6, "SEND answer"),
+        (8, "SPLIT"),
+        (9, "BAT"),
+    ] {
+        if shared.rounds[r - 1].name != name {
+            return Err(format!(
+                "round {r} is {}, not {name}",
+                shared.rounds[r - 1].name
+            ));
+        }
+    }
+    // G_u's group: FOLDEQ's (Rec_i) then (Col) per draw; SPLIT's share of (Fold); the
+    // sample claims of its members G_u (round 3) and the shared split's mask (round 6,
+    // after Omega's answers). BAT (round 9) takes them in begin_run() order.
+    let u_answers = claims::elements(msg(3))?;
+    let omega_split_answers = claims::elements(msg(6))?;
+    let a_omega = shape.omega.answers as usize;
+    if u_answers.len() != shape.fold.u.answers as usize
+        || omega_split_answers.len() != a_omega + shape.shared_split.answers as usize
+    {
+        return Err("a SEND answer message holds another number of answers than the shapes".into());
+    }
+    let share = match claims::elements(msg(8))?.as_slice() {
+        [s] => *s,
+        _ => return Err("SPLIT sends exactly one element".into()),
+    };
+    let eq_gamma = foldeq::weights(&shape.fold, gamma);
+    let mut group_u = claims::GroupClaims::default();
+    for i in 0..shape.fold.index.answers {
+        group_u.add(
+            claims::Kind::Plain,
+            format!("FOLDEQ: (Rec_{i})"),
+            foldeq::record_target(&shape.fold.index, &record, i, &eq_gamma),
+        )?;
+    }
+    for (k, &dx) in stored.draw_list.iter().enumerate() {
+        let at = stored
+            .list
+            .binary_search(&dx)
+            .map_err(|_| "a draw not in the list")?;
+        group_u.add(
+            claims::Kind::Generator,
+            format!("FOLDEQ: (Col_{})", k + 1),
+            foldeq::column_symbol(&eq_gamma, &stored.columns[at * rows..(at + 1) * rows]),
+        )?;
+    }
+    group_u.add_member_samples("G_u", &u_answers)?;
+    let (omega_share, u_share) = claims::split_targets(E::ZERO, share); // (Fold) has target 0
+    group_u.add(claims::Kind::Plain, "LIN: (Fold), second share", u_share)?;
+    group_u.add_member_samples("shared split mask", &omega_split_answers[a_omega..])?;
+    let bat_claims = group_u.begin_run()?;
+    // Omega's group: SPLIT's first share; the samples of Omega and of the split mask
+    // (round 6, as sent). Its test's BAT is round 27.
+    if shared.rounds[26].name != "BAT" {
+        return Err(format!("round 27 is {}, not BAT", shared.rounds[26].name));
+    }
+    let mut group_omega = claims::GroupClaims::default();
+    group_omega.add(claims::Kind::Plain, "LIN: (Fold), first share", omega_share)?;
+    group_omega.add_member_samples("Omega", &omega_split_answers[..a_omega])?;
+    group_omega.add_member_samples("shared split mask", &omega_split_answers[a_omega..])?;
+    let omega_claims = group_omega.begin_run()?;
+    let mut d27 = shared.draw(27).ok_or("no round 27")?;
+    let bat_omega =
+        claims::batch_target(&omega_claims, d27.extension().map_err(|e| e.to_string())?);
+    let mut d9 = shared.draw(9).ok_or("no round 9")?;
+    let bat_u = claims::batch_target(&bat_claims, d9.extension().map_err(|e| e.to_string())?);
     let ours = [
         ("FOLDEQ:_e_0", n.e_0),
         ("FOLDEQ:_(Rec_0)'s_target", n.rec_0_target),
@@ -182,13 +256,21 @@ fn run(args: &[String]) -> Result<(), String> {
             "LIN:_(Fold)_on_G_u<1>",
             flashprove_iop::lin::fold_on_u(&shape, &psi, &zeta, 1),
         ),
+        ("BAT:_target", bat_u),
     ];
+    // Upstream note index, name, value.
+    let mut all: Vec<(usize, &str, E)> = ours
+        .iter()
+        .enumerate()
+        .map(|(i, (w, v))| (i, *w, *v))
+        .collect();
+    all.push((26, "BAT:_target", bat_omega));
     println!(
         "SHARED_CHAIN_CHECK walk=OK table_rows={rows} k_col={} k_lo={} first_draw={x}",
         shape.k_col(),
         shape.k_lo
     );
-    for (i, (what, v)) in ours.iter().enumerate() {
+    for (i, what, v) in &all {
         println!("note i={i} what={what} value={}", show(v));
     }
     if let Some(p) = notes_path {
@@ -207,8 +289,8 @@ fn run(args: &[String]) -> Result<(), String> {
                 );
             }
         }
-        for (i, (what, v)) in ours.iter().enumerate() {
-            let (cw, cv) = cpp.get(&i).ok_or(format!("C++ has no note {i}"))?;
+        for (i, what, v) in &all {
+            let (cw, cv) = cpp.get(i).ok_or(format!("C++ has no note {i}"))?;
             if cw != what || *cv != show(v) {
                 return Err(format!(
                     "note {i} ({what}): Rust {} differs from C++ {cv}",
@@ -217,12 +299,12 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         println!(
-            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row: all equal)",
-            ours.len(),
+            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, both BAT targets: all equal)",
+            all.len(),
             cpp.len()
         );
     }
-    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row pending=SPLIT,BAT,FOLD,CS,BASE");
+    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega) pending=row_coefficients,FOLD,CS,BASE");
     Ok(())
 }
 
