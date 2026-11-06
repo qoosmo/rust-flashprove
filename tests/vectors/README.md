@@ -19,3 +19,12 @@ Sample: 64 token words, then r=60, e=64; y=199.
 
 There is NO included full proof, no claimed acceptance vector, and no independent
 validation against cp_verify yet.
+
+## `accepted-proof.first-chain.schedule`
+
+The opening schedule of the accepted proof's first chain: for each of its 20
+Merkle openings, the positions round after which it is read, the tree number
+and the column widths. Plan data, generated from test-only C++ diagnostics by
+`scripts/extract_first_chain_inputs.py`, and regenerated and diffed in CI. It
+holds no offset, length, root, position or digest: the Rust walk finds those
+itself. Stage D7 replaces this file with native plan derivation.
