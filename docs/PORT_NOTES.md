@@ -97,5 +97,28 @@ Values are exact field elements; when the order of products differs from the C++
   row] and tree 2 = [split mask]. test_omega CS (round 32) reads tree 1 = [Omega: 4 E rows], tree 2
   and tree 5 = [fresh fold mask].
 
-## Next: the claims' coefficient side (FOLDEQ Rec/Col rows, LIN Fold split halves, sample rows
-from the draws) feeding `bat::combine`, then `switch_rows` (cs.h:376) for notes 12–15
+## Coefficient side, CS and BASE (done: all 45 shared-chain notes)
+
+- `tensor_below`: one tensor per set bit $q$ of `len` (higher set bits forced by $(0, h)$, clear ones
+  by $(l, 0)$, bit $q$ by $(l, 0)$), or the dense slice zeroed past `len`.
+- Rec rows: seeds from a chain with label $2^{32}$, zero parameters, statement = table name
+  (root ‖ configuration ‖ log_n, ell, r, v, answers, salt_bytes as u64 LE), unsalted, one empty SEED
+  round: per answer, `log_ell` draws, then $\beta$ nonzero. Units on the pads via `lay.index`.
+- SPLIT: $\kappa$ = mask entry 0 of the split mask (`MaskLedger::take` on a fresh ledger); $+1$ in
+  the first half, $-1$ in the second.
+- `switch_rows`: the old claim (c lifted into block `main`, each $d_j$ as runs on the rest's places),
+  then per draw: the main generator row (message tensor + tail run) and per mask row the mask code's
+  generator row at $x \bmod 2^{\log n_{zk}}$ (a box tensor when the places are a power-of-two
+  stride, else runs).
+- Each CS: SEND seeds from the round before CS, g's answer at the start of the CS message, θ = the CS
+  round's draw after its positions. The riding mask is the next FOLD's fresh mask, or BASE's $g^*$
+  at the last stage (main 1 row, mask 1 row).
+- `iopp_last_rows`: $k = 1, h = 0$, one member; $c$ fixed at 0 in variable 0; masks = 1.
+- BASE: λ round message = $t^*$; the BASE message = $M'_0$ (ell), $M'_1$ (ell_zk), $R'_0$ (r), $R'_1$
+  (r_zk). Refusal 1: $\langle c, M'_0\rangle + \langle d, M'_1\rangle = t^* + \lambda t$. Refusal 2: at each
+  listed position, Enc$(M'_j, R'_j)(x_j) = g^*_j(x) + \lambda\, y_j(x)$.
+- Tree placements in the shared chain: 0 = [G_u | test_u fold mask], 1 = Omega, 2 = split mask,
+  3 = [stage 2 g | fold mask], 4 = [stage 3 g | base mask], 5 = test_omega fold mask, 6, 7 as 3, 4.
+
+## Next: S10 (move the driver into `flashprove-iop` + `proof_walk`'s verdict, port TreeBook places),
+then the first chain (model segments) and the second chain

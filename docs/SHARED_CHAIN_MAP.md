@@ -84,10 +84,10 @@ own faults, ported as `debug_assert` + fail-closed errors).
 | S6 ◐ | `bat`: batch target ✔; `bat::combine` (coefficients, via `add_to_group_row`) ✔, fed once SEND's sample rows (S3) and FOLDEQ's/LIN's full rows exist | bat.h | notes 7, 26 ✔ |
 | S7 ◐ | `fold`: running claim ✔, `fold_output` (c fixed and frozen, kept factor, mask form, mask weights), shape and row checks ✔ | fold.h, fold_rounds.h, fold_algebra.h | notes 8, 27 ✔; 16, 35 follow CS |
 | S8 ◐ | `cs`: single rows' symbols at the first draw ✔; next group's claims (`switch_rows`) pending | cs.h, single_rows.h | notes 9–11, 28–30 ✔; 12–15, 31–34 need the claims' coefficients |
-| S9 | `base`: BASE checks (the two refusals) | base_case.h | notes 24–25, 43–44 |
+| S9 ✔ | BASE: linear check $\langle c, M'\rangle + \langle d, \mu'\rangle = t^* + \lambda t$ and encoding check at every listed position (in `shared_chain_check`) | base_case.h, iopp.h (`iopp_last_rows`) | notes 24–25, 43–44 ✔ |
 | S10 | integrate into `proof_walk` → `shared_chain_verified` | iopp.h, lin.h | all 45; negative corpus on algebraic bytes |
 
-Progress: `shared_chain_check` reproduces notes 0–15 and 26–34 (25 of 45), with every claim's coefficients carried through BAT, FOLD and CS from the native walk's own draws and
+Progress: `shared_chain_check` reproduces **all 45 notes** and runs both BASE refusals, which pass on the accepted proof (`SHARED_CHAIN_ALGEBRA_OK`). Each claim's coefficients are carried through BAT, FOLD and CS. Not yet in `proof_walk`'s verdict (S10), and still hard-coded in the driver: the oracle-to-tree placements (TreeBook not ported), kept members in CS (none in the shared chain), and h > 0 for the old mask row of the first stage from the native walk's own draws and
 openings, compared with upstream in CI. Each round's verifier message is kept as a `Draw` positioned
 after its positions, so later blocks draw in the reference's order (an invariant: one draw per round).
 

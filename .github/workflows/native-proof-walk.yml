@@ -104,7 +104,8 @@ jobs:
             "$F/config/policy.txt" "$F/config/layout.txt" "$F/config/KL.bin" \
             reports/inputs tests/vectors/accepted-proof.proof.schedule \
             --compare-notes tests/vectors/accepted-proof.notes.txt | tee reports/shared-chain-check.txt
-          grep -q '^cpp_notes_compared=25 of 45 ' reports/shared-chain-check.txt
+          grep -q '^cpp_notes_compared=45 of 45 ' reports/shared-chain-check.txt
+          grep -q '^SHARED_CHAIN_ALGEBRA_OK ' reports/shared-chain-check.txt
       - name: Negative corpus (Rust must reject; clean C++ must not say YES)
         run: |
           set -euo pipefail

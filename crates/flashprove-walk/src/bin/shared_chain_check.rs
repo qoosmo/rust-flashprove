@@ -6,7 +6,8 @@
 //! block-by-block notes (`VerifierContext::notes`) record for the shared chain,
 //! from the walk's draws and openings only. With --compare-notes, compares them
 //! with upstream's (tests/vectors/accepted-proof.notes.txt) AFTER computing.
-//! Ported so far: notes 0-15, 26-34 (FOLDEQ, LIN, SPLIT, BAT, first FOLD, first CS). Not a verdict: no block's claims are
+//! All 45 notes: FOLDEQ, SEND, LIN, SPLIT, then for test_u and test_omega BAT, FOLD and CS
+//! per stage, and BASE with its two refusals (the linear check and the encoding check). Not a verdict: no block's claims are
 //! tested yet; that happens at BASE.
 use flashprove_field::{Ext3 as E, Fp};
 use flashprove_iop::claims;
@@ -523,137 +524,321 @@ fn run(args: &[String]) -> Result<(), String> {
         st.add_row(g_o, first)?;
         st.add_row(g_u, second)?;
 
-        // One test: BAT, FOLD (first stage), CS into stage 2.
+        // Where each oracle message's symbols are in the opened leaves (TreeBook::sort_out):
+        // (tree, offset of its main symbols, offset of its mask symbols), in F symbols. A
+        // leaf holds the main symbols of all parts, then the mask symbols of all parts.
+        let mut place: BTreeMap<u32, (u32, usize, usize)> = BTreeMap::new();
+        place.insert(u_id, (0, 0, 54));
+        place.insert(
+            mask_u.ok_or("test_u's fold mask is not sent ahead: not ported")?,
+            (0, 54, 54),
+        );
+        place.insert(omega_id, (1, 0, 0));
+        place.insert(split_id, (2, 0, 0));
+        // The rows of oracle message o at draw k of the opening after round r: (main, mask).
+        let rows_at = |st: &Statement,
+                       place: &BTreeMap<u32, (u32, usize, usize)>,
+                       r: u64,
+                       k: usize,
+                       o: u32|
+         -> Result<(Vec<E>, Vec<E>), String> {
+            let &(tree, ms, ks) = place.get(&o).ok_or(format!("oracle {o} has no place"))?;
+            let rec = opened(r, tree)?;
+            let x = *rec.draw_list.get(k).ok_or("CS: a tree has fewer draws")?;
+            let at = rec
+                .list
+                .binary_search(&x)
+                .map_err(|_| "a draw not in its list")?;
+            let col = &rec.columns[at * rec.width..(at + 1) * rec.width];
+            let sh = &st.oracle(o).shape;
+            let read = |from: usize, n: u64, deg: u64| -> Result<Vec<E>, String> {
+                let n = n as usize;
+                if from + 3 * n > col.len() && deg == 3 {
+                    return Err(format!("tree {tree}: the column is too narrow"));
+                }
+                Ok((0..n)
+                    .map(|b| {
+                        if deg == 3 {
+                            E([
+                                col[from + 3 * b],
+                                col[from + 3 * b + 1],
+                                col[from + 3 * b + 2],
+                            ])
+                        } else {
+                            E::from_base(col[from + b])
+                        }
+                    })
+                    .collect())
+            };
+            Ok((
+                read(ms, sh.main_rows, sh.main_deg)?,
+                read(ks, sh.mask_rows, 3)?,
+            ))
+        };
+        // single_rows_symbols at draw k: [main folded, (kept), old mask folded, fresh folded].
+        let single_at = |st: &Statement,
+                         place: &BTreeMap<u32, (u32, usize, usize)>,
+                         r: u64,
+                         k: usize,
+                         srows: &fold::SingleRows|
+         -> Result<Vec<E>, String> {
+            let l = &srows.layout;
+            let mut main = vec![E::ZERO; 1 << l.k];
+            let mut mask = vec![E::ZERO; 1 << l.h];
+            for (w, &o) in l.members.iter().enumerate() {
+                let (m, z) = rows_at(st, place, r, k, o)?;
+                for (b, v) in m.into_iter().enumerate() {
+                    main[l.main_first[w] as usize + b] = v;
+                }
+                for (b, v) in z.into_iter().enumerate() {
+                    mask[l.mask_first[w] as usize + b] = v;
+                }
+            }
+            let mut y = vec![fold::fold_low(main, &srows.gamma, l.k)[0]];
+            if srows.masks >= 1 {
+                y.push(fold::fold_low(mask, &srows.gamma, l.h)[0]);
+            }
+            if srows.masks == 2 {
+                let (_, f) = rows_at(st, place, r, k, srows.fresh)?;
+                y.push(fold::fold_low(f, &srows.gamma, l.h)[0]);
+            }
+            Ok(y)
+        };
         struct Test<'a> {
             group: u32,
             stages: &'a [IoppStage],
             bat: u64,
             eps: u64,
-            gamma: &'a [E],
+            gamma: Vec<E>,
             fold_target: E,
             bat_target: E,
-            cs: u64,
-            main: (u32, usize),
-            old: u32,
-            fresh_at: (u32, usize),
-            logs: (u32, u32, u32),
+            fresh: u32,
+            trees: [u32; 2],
             note: usize,
         }
+        // One whole proximity test: BAT, then per stage FOLD and CS, then BASE with its two
+        // refusals. Returns the notes, in upstream's order.
         let run_test = |st: &mut Statement,
-                        t: Test,
-                        fresh: u32|
+                        place: &mut BTreeMap<u32, (u32, usize, usize)>,
+                        t: Test|
          -> Result<Vec<(usize, &'static str, E)>, String> {
             let input = st.begin_run(t.group)?;
             let mut layout = input.layout.clone();
             let x = ext(shared.draw(t.bat).ok_or("no BAT draw")?.extension())?;
-            let row = bat::combine(st, t.group, input, x);
+            let mut row = bat::combine(st, t.group, input, x);
             if row.target != t.bat_target {
                 return Err(
                     "BAT: the combined claim's target differs from the targets alone".into(),
                 );
             }
-            let s0 = t.stages[0];
-            layout.k = s0.k;
-            layout.h = s0.h;
-            let fs = fold::FoldShape {
-                code: s0.code,
-                mask_code: s0.mask_code,
-                layout,
-            };
-            fold::fold_shape_check(st, &fs)?;
-            fold::fold_row_check(st, &fs, &row)?;
-            let eps = ext(shared.draw(t.eps).ok_or("no eps draw")?.extension())?;
-            let single = fold::fold_output(st, &fs, row, fresh, eps, t.gamma, t.fold_target);
-            // CS into stage 2: g, then (masks ride) the next fold mask or the base mask.
-            let next = t.stages[1];
-            let to = st.new_group("stage 2", next.code, next.mask_code)?;
-            let target = cs::switch_target_stage(next.code, next.mask_code, next.k, next.h, 1);
-            let g = st.sent(target.shape)?;
-            let mut shapes = vec![target.shape];
-            let mut ids = vec![g];
-            if shape.masks_ride {
-                let m = if t.stages.len() == 2 {
-                    OracleShape {
-                        code: Some(next.code),
-                        main_rows: 1,
-                        main_deg: 3,
-                        mask_rows: 1,
-                        mask_code: Some(next.mask_code),
-                        answers: 0,
-                    }
-                } else {
-                    fold_mask_shape(&next)
+            let mut notes = Vec::new();
+            let mut note = t.note;
+            let (mut eps_round, mut gamma, mut fold_t, mut fresh) =
+                (t.eps, t.gamma.clone(), t.fold_target, t.fresh);
+            let last = t.stages.len() - 1;
+            let mut cs_round = 0;
+            for i in 0..last {
+                let si = t.stages[i];
+                layout.k = si.k;
+                layout.h = si.h;
+                if i > 0 {
+                    let (ft, g) = fold_target(eps_round as usize, si.k, row.target)?;
+                    fold_t = ft;
+                    gamma = g;
+                    notes.push((note, "FOLD:_target", ft));
+                    note += 1;
+                }
+                let fs = fold::FoldShape {
+                    code: si.code,
+                    mask_code: si.mask_code,
+                    layout: layout.clone(),
                 };
-                shapes.push(m);
-                ids.push(st.sent(m)?);
-            }
-            let answers = claims::elements(msg(t.cs as usize))?;
-            send::admit_all(st, &ids, &seeds_of(t.cs - 1, &shapes)?, &answers)?;
-            st.join(to, g, false)?;
-            let draws = opened(t.cs, t.main.0)?.draw_list.clone();
-            let mut ys = Vec::new();
-            for &x in &draws {
-                let short = |lg: u32| x & ((1_u64 << lg) - 1);
-                let mut rows_x = symbols(t.cs, t.main.0, short(t.logs.0), 0, t.main.1)?;
-                rows_x.resize(1 << s0.k, E::ZERO);
-                ys.push(vec![
-                    fold::fold_low(rows_x, t.gamma, s0.k)[0],
-                    symbols(t.cs, t.old, short(t.logs.1), 0, 1)?[0],
-                    symbols(t.cs, t.fresh_at.0, short(t.logs.2), t.fresh_at.1, 1)?[0],
-                ]);
-            }
-            for r in cs::switch_rows(st, &single, &target, g, &draws, &ys)? {
-                st.add_row(to, r)?;
-            }
-            let input = st.begin_run(to)?;
-            let theta = ext(shared.draw(t.cs).ok_or("no CS draw")?.extension())?;
-            let row = bat::combine(st, to, input, theta);
-            Ok(vec![
-                (t.note, "CS:_target", row.target),
-                (t.note + 1, "CS:_c'[0]", row.c.at(0)),
-                (t.note + 2, "CS:_d'[0]", *row.d.first().ok_or("CS: no d")?),
-                (
-                    t.note + 3,
+                fold::fold_shape_check(st, &fs)?;
+                fold::fold_row_check(st, &fs, &row)?;
+                let eps = ext(shared.draw(eps_round).ok_or("no eps draw")?.extension())?;
+                let single = fold::fold_output(st, &fs, row, fresh, eps, &gamma, fold_t);
+                let seed_round = eps_round + si.k as u64 + 1;
+                cs_round = seed_round + 1;
+                let next = t.stages[i + 1];
+                let to = st.new_group("stage", next.code, next.mask_code)?;
+                let target = cs::switch_target_stage(next.code, next.mask_code, next.k, next.h, 1);
+                let g = st.sent(target.shape)?;
+                let mut shapes = vec![target.shape];
+                let mut ids = vec![g];
+                if shape.masks_ride {
+                    let m = if i + 1 == last {
+                        OracleShape {
+                            code: Some(next.code),
+                            main_rows: 1,
+                            main_deg: 3,
+                            mask_rows: 1,
+                            mask_code: Some(next.mask_code),
+                            answers: 0,
+                        }
+                    } else {
+                        fold_mask_shape(&next)
+                    };
+                    shapes.push(m);
+                    ids.push(st.sent(m)?);
+                }
+                // The new tree: [g | the riding mask], main symbols then mask symbols.
+                let tree = t.trees[i];
+                let main_w: usize = shapes.iter().map(|s| 3 * s.main_rows as usize).sum();
+                let (gm, gk) = (
+                    3 * target.shape.main_rows as usize,
+                    3 * target.shape.mask_rows as usize,
+                );
+                place.insert(g, (tree, 0, main_w));
+                if ids.len() > 1 {
+                    place.insert(ids[1], (tree, gm, main_w + gk));
+                }
+                let answers = claims::elements(msg(cs_round as usize))?;
+                send::admit_all(st, &ids, &seeds_of(seed_round, &shapes)?, &answers)?;
+                st.join(to, g, false)?;
+                let main_tree = place.get(&single.layout.members[0]).ok_or("no place")?.0;
+                let draws = opened(cs_round, main_tree)?.draw_list.clone();
+                let ys = (0..draws.len())
+                    .map(|k| single_at(st, place, cs_round, k, &single))
+                    .collect::<Result<Vec<_>, String>>()?;
+                if i == 0 {
+                    notes.push((note - 3, "CS:_y_main_at_the_first_draw", ys[0][0]));
+                    notes.push((note - 2, "CS:_y_0_at_the_first_draw", ys[0][1]));
+                    notes.push((note - 1, "CS:_y_1_at_the_first_draw", ys[0][2]));
+                } else {
+                    notes.push((note, "CS:_y_main_at_the_first_draw", ys[0][0]));
+                    notes.push((note + 1, "CS:_y_0_at_the_first_draw", ys[0][1]));
+                    notes.push((note + 2, "CS:_y_1_at_the_first_draw", ys[0][2]));
+                    note += 3;
+                }
+                for r in cs::switch_rows(st, &single, &target, g, &draws, &ys)? {
+                    st.add_row(to, r)?;
+                }
+                let input = st.begin_run(to)?;
+                layout = input.layout.clone();
+                let theta = ext(shared.draw(cs_round).ok_or("no CS draw")?.extension())?;
+                row = bat::combine(st, to, input, theta);
+                notes.push((note, "CS:_target", row.target));
+                notes.push((note + 1, "CS:_c'[0]", row.c.at(0)));
+                notes.push((note + 2, "CS:_d'[0]", *row.d.first().ok_or("CS: no d")?));
+                notes.push((
+                    note + 3,
                     "CS:_d's_last_entry",
                     *row.d.last().ok_or("CS: no d")?,
-                ),
-            ])
+                ));
+                note += 4;
+                eps_round = cs_round + 1;
+                fresh = *ids.get(1).ok_or("masks do not ride: not ported")?;
+            }
+            // BASE (iopp_last_rows, base_verify): the riding base mask is g*.
+            let sl = t.stages[last];
+            if !(layout.k == 1 && layout.h == 0 && layout.members.len() == 1) {
+                return Err(
+                    "IOPP: the last stage is one oracle message of one main and one mask row"
+                        .into(),
+                );
+            }
+            let mut c = row.c.clone();
+            c.fix_low(&[E::ZERO], 1, E::ONE);
+            let star = fresh;
+            let code = codes.base[sl.code as usize];
+            let zk = codes.mask[sl.mask_code as usize];
+            let (lam_round, base_round) = (cs_round + 1, cs_round + 2);
+            let target_star = match claims::elements(msg(lam_round as usize))?.as_slice() {
+                [x] => *x,
+                _ => return Err("BASE lambda: one element".into()),
+            };
+            let lambda = ext(shared.draw(lam_round).ok_or("no lambda")?.extension())?;
+            let words = claims::elements(msg(base_round as usize))?;
+            let (le, lz) = (code.ell as usize, zk.ell as usize);
+            if words.len() != le + lz + code.r as usize + zk.r as usize {
+                return Err("BASE: the masked rows have not the codes' lengths".into());
+            }
+            let m0 = &words[..le];
+            let m1 = &words[le..le + lz];
+            let r0 = &words[le + lz..le + lz + code.r as usize];
+            let r1 = &words[le + lz + code.r as usize..];
+            let log_ell = code.log_ell();
+            let mut cw = vec![E::ZERO; 1 << log_ell];
+            c.add_to(&mut cw, log_ell);
+            let left =
+                flashprove_iop::ext::inner(&cw[..le], m0) + flashprove_iop::ext::inner(&row.d, m1);
+            let right = target_star + lambda * row.target;
+            notes.push((note, "BASE:_left_side_of_the_linear_check", left));
+            notes.push((note + 1, "BASE:_right_side_of_the_linear_check", right));
+            if left != right {
+                return Err(
+                    "BASE: the masked message in the proof does not satisfy the linear claim"
+                        .into(),
+                );
+            }
+            // Refusal 2: the encoding of (M', R') against g* + lambda * (the rows) at each listed position.
+            let gid = layout.members[0];
+            let base_tree = place.get(&gid).ok_or("no place")?.0;
+            place.insert(star, (base_tree, 3, 9));
+            place.insert(gid, (base_tree, 0, 6));
+            let rec = opened(base_round, base_tree)?;
+            let encode = |cj: &flashprove_iop::code::Code, x: u64, m: &[E], r: &[E]| -> E {
+                let g = foldeq::GeneratorRow::at(cj, x);
+                let mut s = E::ZERO;
+                for (j, &v) in m.iter().enumerate() {
+                    s += v.scale(g.message(j as u64));
+                }
+                for (j, &v) in r.iter().enumerate() {
+                    s += v.scale(g.tail(j as u64));
+                }
+                s
+            };
+            for (k, &x) in rec.draw_list.iter().enumerate() {
+                let (gm, gz) = rows_at(st, place, base_round, k, gid)?;
+                let (sm, sz) = rows_at(st, place, base_round, k, star)?;
+                let xz = x & ((1_u64 << zk.log_n) - 1);
+                if encode(&code, x, m0, r0) != sm[0] + lambda * gm[0]
+                    || encode(&zk, xz, m1, r1) != sz[0] + lambda * gz[0]
+                {
+                    return Err("BASE: the encoding of the masked message differs from the opened symbols at a listed position".into());
+                }
+            }
+            Ok(notes)
         };
-        let mask_u = mask_u.ok_or("test_u's fold mask is not sent ahead: not ported")?;
         let tu = Test {
             group: g_u,
             stages: &shape.test_u,
             bat: 9,
             eps: 10,
-            gamma: &gamma_u,
+            gamma: gamma_u.clone(),
             fold_target: fold_u,
             bat_target: bat_u,
-            cs: 17,
-            main: (0, 18),
-            old: 2,
-            fresh_at: (0, 54),
-            logs: (17, 13, 17),
+            fresh: mask_u.ok_or("no mask")?,
+            trees: [3, 4],
             note: 12,
         };
-        all.extend(run_test(&mut st, tu, mask_u)?);
+        let nu = run_test(&mut st, &mut place, tu)?;
         // test_omega's fresh mask comes with FOLD epsilon (round 28), after test_u's messages.
         let mask_o = st.sent(fold_mask_shape(&shape.test_omega[0]))?;
+        place.insert(mask_o, (5, 0, 0));
         let to_ = Test {
             group: g_o,
             stages: &shape.test_omega,
             bat: 27,
             eps: 28,
-            gamma: &gamma_o,
+            gamma: gamma_o.clone(),
             fold_target: fold_o,
             bat_target: bat_omega,
-            cs: 32,
-            main: (1, 4),
-            old: 2,
-            fresh_at: (5, 0),
-            logs: (18, 13, 13),
+            fresh: mask_o,
+            trees: [6, 7],
             note: 31,
         };
-        all.extend(run_test(&mut st, to_, mask_o)?);
+        let no = run_test(&mut st, &mut place, to_)?;
+        st.require_all_tested()?;
+        for n in nu.into_iter().chain(no) {
+            if !all.iter().any(|a| a.0 == n.0) {
+                all.push(n);
+            }
+        }
+        all.sort_by_key(|n| n.0);
+        println!(
+            "SHARED_CHAIN_ALGEBRA_OK both proximity tests end in BASE with both refusals passed"
+        );
     }
     all.sort_by_key(|n| n.0);
     println!(
@@ -690,12 +875,12 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         println!(
-            "cpp_notes_compared={} of {} (FOLDEQ, LIN, SPLIT, BAT, first FOLD, first CS with every claim's coefficients: all equal)",
+            "cpp_notes_compared={} of {} (every block of both proximity tests through BASE: all equal)",
             all.len(),
             cpp.len()
         );
     }
-    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega),first_CS(test_u,test_omega) pending=second_FOLD,second_CS,BASE");
+    println!("scope=SHARED_CHAIN_ONLY ported=FOLDEQ,SEND,LIN_fold,SPLIT,BAT,FOLD,CS,BASE(test_u,test_omega) pending=first_chain,second_chain,verdict");
     Ok(())
 }
 
