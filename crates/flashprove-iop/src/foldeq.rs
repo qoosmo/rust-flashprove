@@ -158,3 +158,88 @@ pub fn notes(
 pub fn pad_place(s: &IndexShape, answer: u32, t: u64) -> u64 {
     s.plain() + E_DEGREE * u64::from(answer) + t
 }
+
+/// `foldeq_record_row`: the claim (Rec_i) on G_u, from the record's seed i.
+pub fn record_row(
+    s: &FoldeqShape,
+    seed: &crate::send::SampleSeed,
+    rec: &IndexRecord,
+    i: u32,
+    eq_gamma: &[E],
+    u: crate::relation::OracleId,
+    lay: &crate::relation::VectorLay,
+) -> crate::relation::Row {
+    use crate::relation::{Part, Row, RowKind};
+    use crate::tensor::{tensor_below, Tensor};
+    let ix = &s.index;
+    let bits = ix.code.log_ell();
+    assert!(
+        seed.z.len() == bits as usize && rec.y.len() as u64 == ix.rows() * ix.answers as u64,
+        "record: not a record of this table"
+    );
+    let mut row = Row::new("the record, folded", RowKind::Plain);
+    let under = Tensor::eq(&seed.z, E::ONE);
+    let mut cut = Vec::new();
+    tensor_below(&under, 0, bits, ix.code.ell, &mut cut);
+    for t in cut {
+        row.add(u, Part::Main, lay.on_table(t));
+    }
+    for a in 0..ix.answers {
+        for t in 0..E_DEGREE {
+            let p = pad_place(ix, a, t);
+            let own = if a == i {
+                seed.beta * E::theta(t as usize)
+            } else {
+                E::ZERO
+            };
+            row.add_unit(u, Part::Main, lay.index(p), own - under.at(p));
+        }
+    }
+    row.target = record_target(ix, rec, i, eq_gamma);
+    row
+}
+
+/// `foldeq_column_row`: the claim (Col) at a drawn position x with folded symbol y.
+pub fn column_row(
+    s: &FoldeqShape,
+    x: u64,
+    y: E,
+    u: crate::relation::OracleId,
+    lay: &crate::relation::VectorLay,
+) -> crate::relation::Row {
+    use crate::relation::{Part, Row, RowKind};
+    use crate::tensor::{tensor_below, Tensor};
+    let c = &s.index.code;
+    let g = GeneratorRow::at(c, x);
+    let mut row = Row::new("a column of the table", RowKind::Generator);
+    let mut cut = Vec::new();
+    tensor_below(
+        &Tensor::product(&g.f[..c.log_ell() as usize], E::from_base(g.message_scale)),
+        0,
+        c.log_ell(),
+        c.ell,
+        &mut cut,
+    );
+    for t in cut.drain(..) {
+        row.add(u, Part::Main, lay.on_table(t));
+    }
+    if c.r > 0 {
+        tensor_below(
+            &Tensor::product(&g.f[..c.log_r() as usize], E::from_base(g.tail_scale)),
+            0,
+            c.log_r(),
+            c.r,
+            &mut cut,
+        );
+        for mut t in cut {
+            t.insert_choice(
+                c.log_r(),
+                lay.bits() - c.log_r(),
+                s.tail_first() >> c.log_r(),
+            );
+            row.add(u, Part::Main, lay.on_table(t));
+        }
+    }
+    row.target = y;
+    row
+}

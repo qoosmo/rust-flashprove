@@ -27,3 +27,40 @@ pub fn fold_on_u(s: &LinShape, psi: &[E], zeta: &[E], j: u64) -> E {
     }
     E::ZERO - eq_index(j, psi, s.k_lo) * eq_index(hi, zeta, s.k_row())
 }
+
+/// `lin_fold_row`: the claim (Fold) as a [`Row`](crate::relation::Row) on Omega and G_u
+/// (target 0).
+pub fn fold_row(
+    s: &LinShape,
+    psi: &[E],
+    zeta: &[E],
+    u: crate::relation::OracleId,
+    u_lay: &crate::relation::VectorLay,
+    omega: crate::relation::OracleId,
+    omega_lay: &crate::relation::VectorLay,
+) -> crate::relation::Row {
+    use crate::relation::{Part, Row, RowKind};
+    use crate::tensor::{tensor_below, Tensor};
+    let k_row = s.k_row();
+    let mut row = Row::new("LIN: Omega against the folded row", RowKind::Plain);
+    let mut cut = Vec::new();
+    tensor_below(
+        &Tensor::eq(&zeta[..k_row as usize], E::ONE),
+        0,
+        k_row,
+        s.matrix_rows,
+        &mut cut,
+    );
+    for t in cut.drain(..) {
+        row.add(omega, Part::Main, omega_lay.on_table(t));
+    }
+    let mut on_u = Tensor::eq(&psi[..s.k_lo as usize], E::ZERO - E::ONE);
+    for &z in &zeta[..k_row as usize] {
+        on_u.push(E::ONE - z, z);
+    }
+    tensor_below(&on_u, s.k_lo, k_row, s.matrix_rows, &mut cut);
+    for t in cut {
+        row.add(u, Part::Main, u_lay.on_table(t));
+    }
+    row
+}

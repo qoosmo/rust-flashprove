@@ -25,6 +25,7 @@
 pub mod bat;
 pub mod claims;
 pub mod code;
+pub mod cs;
 pub mod ext;
 pub mod fold;
 pub mod foldeq;
@@ -32,6 +33,7 @@ pub mod lin;
 pub mod relation;
 pub mod send;
 pub mod shapes;
+pub mod split;
 pub mod tensor;
 
 /// A cursor over canonical bound bytes: little-endian 64-bit words.

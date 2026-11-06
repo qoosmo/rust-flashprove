@@ -87,7 +87,7 @@ own faults, ported as `debug_assert` + fail-closed errors).
 | S9 | `base`: BASE checks (the two refusals) | base_case.h | notes 24–25, 43–44 |
 | S10 | integrate into `proof_walk` → `shared_chain_verified` | iopp.h, lin.h | all 45; negative corpus on algebraic bytes |
 
-Progress: `shared_chain_check` reproduces notes 0–11 and 26–30 (17 of 45) from the native walk's own draws and
+Progress: `shared_chain_check` reproduces notes 0–15 and 26–34 (25 of 45), with every claim's coefficients carried through BAT, FOLD and CS from the native walk's own draws and
 openings, compared with upstream in CI. Each round's verifier message is kept as a `Draw` positioned
 after its positions, so later blocks draw in the reference's order (an invariant: one draw per round).
 

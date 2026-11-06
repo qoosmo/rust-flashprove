@@ -458,6 +458,90 @@ impl Tensor {
     }
 }
 
+/// `tensor_below` (foldeq.h): v restricted to entries whose bits `from..from+count`, read as a
+/// number, are below `len`, as a sum of tensors (one per set bit of `len`), or the dense
+/// factor cut itself when those bits are all dense.
+pub fn tensor_below(v: &Tensor, from: u32, count: u32, len: u64, out: &mut Vec<Tensor>) {
+    assert!(
+        from + count <= v.vars() && count < 64 && len <= 1_u64 << count,
+        "tensor_below: the cut does not fit the vector"
+    );
+    if len == 1_u64 << count {
+        out.push(v.clone());
+        return;
+    }
+    {
+        let (mut least, mut most) = (0_u64, 0_u64);
+        for t in 0..count {
+            let written = v.dense_vars.contains(&(from + t));
+            if !written && v.lo(from + t) == E::ZERO {
+                least |= 1 << t;
+            }
+            if written || v.hi(from + t) != E::ZERO {
+                most |= 1 << t;
+            }
+        }
+        if most < len {
+            out.push(v.clone());
+            return;
+        }
+        if least >= len {
+            return;
+        }
+    }
+    let dense = v
+        .dense_vars
+        .iter()
+        .filter(|&&d| d >= from && d < from + count)
+        .count() as u32;
+    if dense > 0 {
+        assert!(
+            dense == count,
+            "tensor_below: the cut runs over written-out and product variables at once"
+        );
+        let b = v
+            .values
+            .as_ref()
+            .expect("tensor: dense variables without a vector");
+        let first = v.first as usize;
+        let mut values: Vec<E> = b[first..first + (1 << v.dense_vars.len())].to_vec();
+        for (d, x) in values.iter_mut().enumerate() {
+            let mut number = 0_u64;
+            for (i, &dv) in v.dense_vars.iter().enumerate() {
+                if dv >= from && dv < from + count {
+                    number |= (((d >> i) & 1) as u64) << (dv - from);
+                }
+            }
+            if number >= len {
+                *x = E::ZERO;
+            }
+        }
+        let mut w = v.clone();
+        w.values = None;
+        w.set_values(Arc::new(values), 0);
+        out.push(w);
+        return;
+    }
+    for q in (0..count).rev() {
+        if (len >> q) & 1 == 0 {
+            continue;
+        }
+        let mut w = v.clone();
+        for t in q + 1..count {
+            if (len >> t) & 1 == 1 {
+                let h = w.hi(from + t);
+                w.set_pair(from + t, E::ZERO, h);
+            } else {
+                let l = w.lo(from + t);
+                w.set_pair(from + t, l, E::ZERO);
+            }
+        }
+        let l = w.lo(from + q);
+        w.set_pair(from + q, l, E::ZERO);
+        out.push(w);
+    }
+}
+
 /// `FrozenPart`: $s \cdot f$ under choice variables, $f$ a shared Form on `vars` variables.
 #[derive(Debug, Clone)]
 pub struct FrozenPart {
@@ -801,6 +885,30 @@ mod tests {
         }
         let v = sample();
         assert_eq!(v.mle(&g), fold(&dense(&v), &g, 6)[0]);
+    }
+
+    #[test]
+    fn tensor_below_keeps_exactly_the_entries_below_len() {
+        let v = Tensor::eq(
+            &[e(3, 1, 4), e(1, 5, 9), e(2, 6, 5), e(7, 7, 1)],
+            e(2, 0, 0),
+        );
+        let d = sample();
+        for len in 0..=8_u64 {
+            for (t, from, count) in [(&v, 1_u32, 3_u32), (&d, 3, 2), (&d, 0, 2), (&d, 5, 1)] {
+                if len > 1 << count {
+                    continue;
+                }
+                let mut out = Vec::new();
+                tensor_below(t, from, count, len, &mut out);
+                for j in 0..1_u64 << t.vars() {
+                    let n = (j >> from) & ((1 << count) - 1);
+                    let want = if n < len { t.at(j) } else { E::ZERO };
+                    let got = out.iter().fold(E::ZERO, |s, w| s + w.at(j));
+                    assert_eq!(got, want, "len {len} from {from} count {count} j {j}");
+                }
+            }
+        }
     }
 
     #[test]

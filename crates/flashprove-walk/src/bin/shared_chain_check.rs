@@ -6,7 +6,7 @@
 //! block-by-block notes (`VerifierContext::notes`) record for the shared chain,
 //! from the walk's draws and openings only. With --compare-notes, compares them
 //! with upstream's (tests/vectors/accepted-proof.notes.txt) AFTER computing.
-//! Ported so far: notes 0-11, 26-30 (FOLDEQ, LIN, BAT, first FOLD, first CS symbols). Not a verdict: no block's claims are
+//! Ported so far: notes 0-15, 26-34 (FOLDEQ, LIN, SPLIT, BAT, first FOLD, first CS). Not a verdict: no block's claims are
 //! tested yet; that happens at BASE.
 use flashprove_field::{Ext3 as E, Fp};
 use flashprove_iop::claims;
@@ -403,6 +403,258 @@ fn run(args: &[String]) -> Result<(), String> {
         all.push((base + 1, "CS:_y_0_at_the_first_draw", y[1]));
         all.push((base + 2, "CS:_y_1_at_the_first_draw", y[2]));
     }
+
+    // The whole statement, coefficients included (relation.h): FOLDEQ, SEND, LIN, SPLIT, then
+    // per test BAT, FOLD and CS with `switch_rows`; notes 12-15 and 31-34.
+    {
+        use flashprove_iop::relation::{Statement, VectorLay};
+        use flashprove_iop::shapes::{IoppStage, OracleShape};
+        use flashprove_iop::{bat, cs, lin, send, split};
+        let ext =
+            |r: Result<E, flashprove_transcript::TranscriptError>| r.map_err(|e| e.to_string());
+        let fold_mask_shape = |s: &IoppStage| OracleShape {
+            code: None,
+            main_rows: 0,
+            main_deg: 1,
+            mask_rows: 1 << s.h,
+            mask_code: Some(s.mask_code),
+            answers: 0,
+        };
+        let seeds_of =
+            |round: u64, shapes: &[OracleShape]| -> Result<Vec<send::SampleSeed>, String> {
+                let (bits, answers) = send::seed_shape(&codes, shapes);
+                let mut dr = shared.draw(round).ok_or("no seed draw")?;
+                let mut out = Vec::new();
+                for _ in 0..answers {
+                    let z = (0..bits)
+                        .map(|_| ext(dr.extension()))
+                        .collect::<Result<Vec<E>, String>>()?;
+                    let beta = ext(dr.extension_nonzero())?;
+                    out.push(send::SampleSeed { z, beta });
+                }
+                Ok(out)
+            };
+        let mut st = Statement::new(codes.clone());
+        let u_code = shape.fold.u.code.ok_or("G_u has no code")?;
+        let o_code = shape.omega.code.ok_or("Omega has no code")?;
+        let g_u = st.new_group("LIN: the folded row", u_code, shape.shared_mask_code)?;
+        let g_o = st.new_group("LIN: Omega", o_code, shape.shared_mask_code)?;
+        // Rounds 2-3: G_u and (masks ahead) test_u's fresh fold mask.
+        let u_id = st.sent(shape.fold.u)?;
+        let mut sent2 = vec![shape.fold.u];
+        let mut ids2 = vec![u_id];
+        let mask_u = if shape.masks_ahead {
+            let m = fold_mask_shape(&shape.test_u[0]);
+            sent2.push(m);
+            let id = st.sent(m)?;
+            ids2.push(id);
+            Some(id)
+        } else {
+            None
+        };
+        send::admit_all(&mut st, &ids2, &seeds_of(2, &sent2)?, &u_answers)?;
+        st.join(g_u, u_id, false)?;
+        let u_lay = VectorLay::of(&codes, &shape.fold.u, shape.fold.rows_high);
+        // (Rec_i): record seeds from the chain LABEL_RECORD on the table's name.
+        let ix = &shape.fold.index;
+        let mut name = root.to_vec();
+        name.extend_from_slice(&shared.configuration);
+        for v in [
+            ix.code.log_n as u64,
+            ix.code.ell,
+            ix.code.r,
+            ix.v as u64,
+            ix.answers as u64,
+            ix.salt_bytes,
+        ] {
+            name.extend_from_slice(&v.to_le_bytes());
+        }
+        const LABEL_RECORD: u64 = 1 << 32;
+        let rho0 = flashprove_transcript::first_value(LABEL_RECORD, &[0; 32], &name, None)
+            .map_err(|e| e.to_string())?;
+        let mut chain =
+            flashprove_transcript::Chain::new(LABEL_RECORD, rho0).map_err(|e| e.to_string())?;
+        let mut rd = chain
+            .close_round(&[], flashprove_transcript::RoundKind::Seed, 0, 0)
+            .map_err(|e| e.to_string())?;
+        for i in 0..ix.answers {
+            let z = (0..ix.code.log_ell())
+                .map(|_| ext(rd.extension()))
+                .collect::<Result<Vec<E>, String>>()?;
+            let beta = ext(rd.extension_nonzero())?;
+            let row = foldeq::record_row(
+                &shape.fold,
+                &send::SampleSeed { z, beta },
+                &record,
+                i,
+                &eq_gamma,
+                u_id,
+                &u_lay,
+            );
+            if i == 0 && row.target != n.rec_0_target {
+                return Err("(Rec_0): target differs from note 1".into());
+            }
+            st.add_row(g_u, row)?;
+        }
+        for &dx in &stored.draw_list {
+            let at = stored
+                .list
+                .binary_search(&dx)
+                .map_err(|_| "a draw not in the list")?;
+            let y = foldeq::column_symbol(&eq_gamma, &stored.columns[at * rows..(at + 1) * rows]);
+            st.add_row(g_u, foldeq::column_row(&shape.fold, dx, y, u_id, &u_lay))?;
+        }
+        // Rounds 5-6: Omega and the shared split mask.
+        let omega_id = st.sent(shape.omega)?;
+        let split_id = st.sent(shape.shared_split)?;
+        send::admit_all(
+            &mut st,
+            &[omega_id, split_id],
+            &seeds_of(5, &[shape.omega, shape.shared_split])?,
+            &omega_split_answers,
+        )?;
+        st.join(g_o, omega_id, false)?;
+        st.join(g_o, split_id, false)?;
+        st.join(g_u, split_id, false)?;
+        let omega_lay = VectorLay::of(&codes, &shape.omega, shape.omega_rows_high);
+        let fold_row = lin::fold_row(&shape, &psi, &zeta, u_id, &u_lay, omega_id, &omega_lay);
+        // kappa: the split mask's first free mask entry (MaskLedger::take on a fresh ledger).
+        let (first, second) = split::halve(&st, &fold_row, g_o, g_u, split_id, 0, share)?;
+        st.add_row(g_o, first)?;
+        st.add_row(g_u, second)?;
+
+        // One test: BAT, FOLD (first stage), CS into stage 2.
+        struct Test<'a> {
+            group: u32,
+            stages: &'a [IoppStage],
+            bat: u64,
+            eps: u64,
+            gamma: &'a [E],
+            fold_target: E,
+            bat_target: E,
+            cs: u64,
+            main: (u32, usize),
+            old: u32,
+            fresh_at: (u32, usize),
+            logs: (u32, u32, u32),
+            note: usize,
+        }
+        let run_test = |st: &mut Statement,
+                        t: Test,
+                        fresh: u32|
+         -> Result<Vec<(usize, &'static str, E)>, String> {
+            let input = st.begin_run(t.group)?;
+            let mut layout = input.layout.clone();
+            let x = ext(shared.draw(t.bat).ok_or("no BAT draw")?.extension())?;
+            let row = bat::combine(st, t.group, input, x);
+            if row.target != t.bat_target {
+                return Err(
+                    "BAT: the combined claim's target differs from the targets alone".into(),
+                );
+            }
+            let s0 = t.stages[0];
+            layout.k = s0.k;
+            layout.h = s0.h;
+            let fs = fold::FoldShape {
+                code: s0.code,
+                mask_code: s0.mask_code,
+                layout,
+            };
+            fold::fold_shape_check(st, &fs)?;
+            fold::fold_row_check(st, &fs, &row)?;
+            let eps = ext(shared.draw(t.eps).ok_or("no eps draw")?.extension())?;
+            let single = fold::fold_output(st, &fs, row, fresh, eps, t.gamma, t.fold_target);
+            // CS into stage 2: g, then (masks ride) the next fold mask or the base mask.
+            let next = t.stages[1];
+            let to = st.new_group("stage 2", next.code, next.mask_code)?;
+            let target = cs::switch_target_stage(next.code, next.mask_code, next.k, next.h, 1);
+            let g = st.sent(target.shape)?;
+            let mut shapes = vec![target.shape];
+            let mut ids = vec![g];
+            if shape.masks_ride {
+                let m = if t.stages.len() == 2 {
+                    OracleShape {
+                        code: Some(next.code),
+                        main_rows: 1,
+                        main_deg: 3,
+                        mask_rows: 1,
+                        mask_code: Some(next.mask_code),
+                        answers: 0,
+                    }
+                } else {
+                    fold_mask_shape(&next)
+                };
+                shapes.push(m);
+                ids.push(st.sent(m)?);
+            }
+            let answers = claims::elements(msg(t.cs as usize))?;
+            send::admit_all(st, &ids, &seeds_of(t.cs - 1, &shapes)?, &answers)?;
+            st.join(to, g, false)?;
+            let draws = opened(t.cs, t.main.0)?.draw_list.clone();
+            let mut ys = Vec::new();
+            for &x in &draws {
+                let short = |lg: u32| x & ((1_u64 << lg) - 1);
+                let mut rows_x = symbols(t.cs, t.main.0, short(t.logs.0), 0, t.main.1)?;
+                rows_x.resize(1 << s0.k, E::ZERO);
+                ys.push(vec![
+                    fold::fold_low(rows_x, t.gamma, s0.k)[0],
+                    symbols(t.cs, t.old, short(t.logs.1), 0, 1)?[0],
+                    symbols(t.cs, t.fresh_at.0, short(t.logs.2), t.fresh_at.1, 1)?[0],
+                ]);
+            }
+            for r in cs::switch_rows(st, &single, &target, g, &draws, &ys)? {
+                st.add_row(to, r)?;
+            }
+            let input = st.begin_run(to)?;
+            let theta = ext(shared.draw(t.cs).ok_or("no CS draw")?.extension())?;
+            let row = bat::combine(st, to, input, theta);
+            Ok(vec![
+                (t.note, "CS:_target", row.target),
+                (t.note + 1, "CS:_c'[0]", row.c.at(0)),
+                (t.note + 2, "CS:_d'[0]", *row.d.first().ok_or("CS: no d")?),
+                (
+                    t.note + 3,
+                    "CS:_d's_last_entry",
+                    *row.d.last().ok_or("CS: no d")?,
+                ),
+            ])
+        };
+        let mask_u = mask_u.ok_or("test_u's fold mask is not sent ahead: not ported")?;
+        let tu = Test {
+            group: g_u,
+            stages: &shape.test_u,
+            bat: 9,
+            eps: 10,
+            gamma: &gamma_u,
+            fold_target: fold_u,
+            bat_target: bat_u,
+            cs: 17,
+            main: (0, 18),
+            old: 2,
+            fresh_at: (0, 54),
+            logs: (17, 13, 17),
+            note: 12,
+        };
+        all.extend(run_test(&mut st, tu, mask_u)?);
+        // test_omega's fresh mask comes with FOLD epsilon (round 28), after test_u's messages.
+        let mask_o = st.sent(fold_mask_shape(&shape.test_omega[0]))?;
+        let to_ = Test {
+            group: g_o,
+            stages: &shape.test_omega,
+            bat: 27,
+            eps: 28,
+            gamma: &gamma_o,
+            fold_target: fold_o,
+            bat_target: bat_omega,
+            cs: 32,
+            main: (1, 4),
+            old: 2,
+            fresh_at: (5, 0),
+            logs: (18, 13, 13),
+            note: 31,
+        };
+        all.extend(run_test(&mut st, to_, mask_o)?);
+    }
     all.sort_by_key(|n| n.0);
     println!(
         "SHARED_CHAIN_CHECK walk=OK table_rows={rows} k_col={} k_lo={} first_draw={x}",
@@ -438,12 +690,12 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         println!(
-            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, BAT, first FOLD, CS symbols at the first draw: all equal)",
+            "cpp_notes_compared={} of {} (FOLDEQ, LIN, SPLIT, BAT, first FOLD, first CS with every claim's coefficients: all equal)",
             all.len(),
             cpp.len()
         );
     }
-    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega),first_CS_symbols(test_u,test_omega) pending=group_row_coefficients,CS_target,BASE");
+    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega),first_CS(test_u,test_omega) pending=second_FOLD,second_CS,BASE");
     Ok(())
 }
 
