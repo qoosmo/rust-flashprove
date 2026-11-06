@@ -76,16 +76,20 @@ own faults, ported as `debug_assert` + fail-closed errors).
 |---|---|---|---|
 | S0 ✔ | `code`: codes, points, factors | code.h, cosets.h | 48 points equal upstream `gl64_point` |
 | S0 ✔ | `shapes`: Codes, LinShape, FoldeqShape, IoppStage | lin.h, foldeq.h, iopp.h, context.h | bound bytes round-trip; faults |
-| S1 | `ext`: E arithmetic, inner products, eq tables, MLE | field.h, mle.h, tensor.h (eq parts) | unit vectors vs upstream |
+| S1 ✔ | `ext`: E arithmetic, inner products, eq tables, products | field.h, mle.h, tensor.h (eq parts) | via notes 0–6 |
 | S2 | `relation`: Statement, OracleShape ids, groups, Row (coefficient forms), sampled claims | relation.h | — (structural) |
 | S3 | `send`: notices → trees, sample seeds, answers, pads (`Send::pad`, `vector_lay`, `vector_room`) | send.h, foldeq.h | completes `lin_fault` / `foldeq_fault` |
-| S4 | `foldeq`: record seeds, (Rec), (Col) rows from the stored columns | foldeq.h | notes 0–4 |
-| S5 | `lin`: lin_fold_row, split_verify | lin.h, split.h | notes 5–6 |
+| S4 ◐ | `foldeq`: record parse, weights, (Rec) targets, (Col) symbols, generator row ✔; record seeds and the full rows wait for S2 | foldeq.h | notes 0–4 ✔ |
+| S5 ◐ | `lin`: lin_fold_row coefficients ✔; split_verify | lin.h, split.h | notes 5–6 ✔ |
 | S6 | `bat` | bat.h | notes 7, 26 |
 | S7 | `fold`: FOLD start and rounds | fold.h, fold_rounds.h | notes 8, 16, 27, 35 |
 | S8 | `cs`: code switch (samples, opened symbols, next row) | cs.h | notes 9–15, 17–23, 28–34, 36–42 |
 | S9 | `base`: BASE checks (the two refusals) | base_case.h | notes 24–25, 43–44 |
 | S10 | integrate into `proof_walk` → `shared_chain_verified` | iopp.h, lin.h | all 45; negative corpus on algebraic bytes |
+
+Progress: `shared_chain_check` reproduces notes 0–6 (7 of 45) from the native walk's own draws and
+openings, compared with upstream in CI. Each round's verifier message is kept as a `Draw` positioned
+after its positions, so later blocks draw in the reference's order (an invariant: one draw per round).
 
 S1–S10 are about 2,500 verifier-side C++ lines (of ~4,600 in these files with the prover's). Only
 after S10 does the walk report the shared chain as **algebraically verified**; `verify` stays

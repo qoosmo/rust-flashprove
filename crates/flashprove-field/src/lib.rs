@@ -167,6 +167,47 @@ impl core::ops::Mul for Ext3 {
     }
 }
 
+impl core::ops::Sub for Ext3 {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self([self.0[0] - rhs.0[0], self.0[1] - rhs.0[1], self.0[2] - rhs.0[2]])
+    }
+}
+impl core::ops::AddAssign for Ext3 {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+impl core::ops::SubAssign for Ext3 {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+impl core::ops::MulAssign for Ext3 {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
+impl Ext3 {
+    /// The base-field element x as an element of E (`E::from(F)`).
+    pub const fn from_base(x: Fp) -> Self {
+        Self([x, Fp::ZERO, Fp::ZERO])
+    }
+    /// x * self for x in F.
+    pub fn scale(self, x: Fp) -> Self {
+        Self([self.0[0] * x, self.0[1] * x, self.0[2] * x])
+    }
+    /// theta^t: the t-th basis element 1, X, X^2 of E over F (`E::theta`).
+    /// Zero for t > 2, as upstream.
+    pub fn theta(t: usize) -> Self {
+        let mut c = [Fp::ZERO; 3];
+        if t < 3 {
+            c[t] = Fp::ONE;
+        }
+        Self(c)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -26,6 +26,7 @@
 //! Not a verifier: no algebraic check is made on the opened columns, the
 //! answers or the scalars.
 
+use flashprove_field::Fp;
 use flashprove_merkle::{
     leaf_salt_at, opening_bytes, receive_opening, tree_given_count, MerkleError, OracleTreeShape,
     PositionList, Session,
@@ -34,7 +35,8 @@ use flashprove_transcript::first_query::{
     parameters_digest, parse_parameters, Item, Parameters, QueryError, Round,
 };
 use flashprove_transcript::{
-    configuration_digest, first_value, h, run_value, Chain, Digest, RoundKind, TranscriptError,
+    configuration_digest, first_value, h, run_value, Chain, Digest, Draw, RoundKind,
+    TranscriptError,
 };
 use std::collections::BTreeMap;
 use std::fmt;
@@ -290,6 +292,11 @@ pub struct OpeningRecord {
     pub parameters: Digest,
     pub given: usize,
     pub salt_bytes: usize,
+    /// The list's draws in the order drawn, repeats included (`PositionList::draws`).
+    pub draw_list: Vec<u64>,
+    /// The opened columns, canonical, one per listed position in increasing order.
+    pub columns: Vec<Fp>,
+    pub width: usize,
 }
 #[derive(Debug, Clone)]
 pub struct ChainWalk {
@@ -305,6 +312,20 @@ pub struct ChainWalk {
     pub seal: Option<Digest>,
     /// The cursor after the chain's last planned round and openings.
     pub end: usize,
+    /// Each round's verifier message, as a `Draw` positioned after the round's
+    /// positions (kind 4) or seal (kind 6); `draws[k - 1]` is round k. The
+    /// protocol blocks continue drawing from it in the reference's order.
+    pub draws: Vec<Draw>,
+}
+impl ChainWalk {
+    /// A fresh copy of round k's verifier message (1-based).
+    pub fn draw(&self, round: u64) -> Option<Draw> {
+        usize::try_from(round)
+            .ok()
+            .and_then(|r| r.checked_sub(1))
+            .and_then(|i| self.draws.get(i))
+            .cloned()
+    }
 }
 
 struct Cursor<'a> {
@@ -505,6 +526,7 @@ pub fn walk_chain(
     let mut openings = Vec::new();
     let mut roots: Vec<Digest> = Vec::new();
     let mut seal = None;
+    let mut round_draws: Vec<Draw> = Vec::with_capacity(expanded.len());
 
     for (i, entry) in expanded.iter().enumerate() {
         let rno = i as u64 + 1;
@@ -566,6 +588,7 @@ pub fn walk_chain(
         });
         if kind == RoundKind::Seal {
             seal = Some(draw.seal().map_err(tr(rno))?);
+            round_draws.push(draw);
             continue;
         }
 
@@ -576,6 +599,7 @@ pub fn walk_chain(
                     entry.name
                 )));
             }
+            round_draws.push(draw);
             continue;
         };
         // R6.10: the positions come first in a kind-4 round's draw.
@@ -658,7 +682,7 @@ pub fn walk_chain(
             }
             let own = list.for_tree(s.log_n).map_err(err)?;
             let need = opening_bytes(&shape, &own).map_err(err)?;
-            let (_, used) =
+            let (opened, used) =
                 receive_opening(&proof[at..], &root, &shape, &own, session).map_err(err)?;
             debug_assert_eq!(used, need);
             cur.at += used;
@@ -676,8 +700,19 @@ pub fn walk_chain(
                 parameters: inputs.configuration,
                 given: tree_given_count(s.log_n, &own).map_err(err)?,
                 salt_bytes: salt,
+                draw_list: own.draws().to_vec(),
+                width: opened.width(),
+                columns: opened.columns,
             });
         }
+        round_draws.push(draw);
+    }
+    if round_draws.len() != rounds.len() {
+        return Err(WalkError::Plan(format!(
+            "chain {label:x}: internal: {} draws for {} rounds",
+            round_draws.len(),
+            rounds.len()
+        )));
     }
     Ok(ChainWalk {
         label,
@@ -691,6 +726,7 @@ pub fn walk_chain(
         roots,
         seal,
         end: cur.at,
+        draws: round_draws,
     })
 }
 

@@ -14,6 +14,9 @@
 //! re-serializing a parsed value gives back exactly the input bytes.
 
 pub mod code;
+pub mod ext;
+pub mod foldeq;
+pub mod lin;
 pub mod shapes;
 
 /// A cursor over canonical bound bytes: little-endian 64-bit words.

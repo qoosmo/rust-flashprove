@@ -11,3 +11,4 @@ description = "Native sequential proof cursor over H821 chains: rounds, nonces, 
 flashprove-field = { path = "../flashprove-field" }
 flashprove-transcript = { path = "../flashprove-transcript" }
 flashprove-merkle = { path = "../flashprove-merkle" }
+flashprove-iop = { path = "../flashprove-iop" }
