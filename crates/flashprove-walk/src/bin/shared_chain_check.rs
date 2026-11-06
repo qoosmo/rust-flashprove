@@ -6,11 +6,12 @@
 //! block-by-block notes (`VerifierContext::notes`) record for the shared chain,
 //! from the walk's draws and openings only. With --compare-notes, compares them
 //! with upstream's (tests/vectors/accepted-proof.notes.txt) AFTER computing.
-//! Ported so far: FOLDEQ (notes 0-4). Not a verdict: no block's claims are
+//! Ported so far: notes 0-8, 26, 27 (FOLDEQ, LIN, BAT, first FOLD of each test). Not a verdict: no block's claims are
 //! tested yet; that happens at BASE.
 use flashprove_field::{Ext3 as E, Fp};
 use flashprove_iop::claims;
 use flashprove_iop::code::Codes;
+use flashprove_iop::fold;
 use flashprove_iop::foldeq;
 use flashprove_iop::shapes::LinShape;
 use flashprove_transcript::first_query::parse_parameters;
@@ -265,6 +266,55 @@ fn run(args: &[String]) -> Result<(), String> {
         .map(|(i, (w, v))| (i, *w, *v))
         .collect();
     all.push((26, "BAT:_target", bat_omega));
+    // FOLD (fold_start_verify, fold_rounds_verify): the FOLD epsilon round's message ends with
+    // the hiding sum (after the fresh mask's root when the mask was not sent ahead), its draw is
+    // eps; then k FOLD rounds, each (c0, c2) then g. The running claim starts at sum + eps * t.
+    let fold_target = |eps_round: usize, k: u32, target: E| -> Result<E, String> {
+        let rr = &shared.rounds[eps_round - 1];
+        if rr.name != "FOLD epsilon" {
+            return Err(format!(
+                "round {eps_round} is {}, not FOLD epsilon",
+                rr.name
+            ));
+        }
+        let m = msg(eps_round);
+        let sum = match m.len().checked_sub(24) {
+            Some(at) => match claims::elements(&m[at..])?.as_slice() {
+                [x] => *x,
+                _ => return Err("FOLD epsilon: no hiding sum".into()),
+            },
+            None => return Err("FOLD epsilon: no hiding sum".into()),
+        };
+        let mut de = shared
+            .draw(eps_round as u64)
+            .ok_or("no FOLD epsilon draw")?;
+        let eps = de.extension().map_err(|e| e.to_string())?;
+        let mut claim = fold::FoldVerifierRounds::new(sum, eps, target);
+        for j in 0..k as usize {
+            let r = eps_round + 1 + j;
+            if shared.rounds[r - 1].name != "FOLD round" {
+                return Err(format!(
+                    "round {r} is {}, not FOLD round",
+                    shared.rounds[r - 1].name
+                ));
+            }
+            let (c0, c2) = match claims::elements(msg(r))?.as_slice() {
+                [c0, c2] => (*c0, *c2),
+                _ => return Err(format!("FOLD round {r} sends exactly two elements")),
+            };
+            let mut dg = shared.draw(r as u64).ok_or("no FOLD round draw")?;
+            claim.round(c0, c2, dg.extension().map_err(|e| e.to_string())?);
+        }
+        if shared.rounds[eps_round + k as usize].name == "FOLD round" {
+            return Err("more FOLD rounds than the stage's k".into());
+        }
+        Ok(claim.claim())
+    };
+    let ku = shape.test_u.first().ok_or("test_u has no stage")?.k;
+    let ko = shape.test_omega.first().ok_or("test_omega has no stage")?.k;
+    all.push((8, "FOLD:_target", fold_target(10, ku, bat_u)?));
+    all.push((27, "FOLD:_target", fold_target(28, ko, bat_omega)?));
+    all.sort_by_key(|n| n.0);
     println!(
         "SHARED_CHAIN_CHECK walk=OK table_rows={rows} k_col={} k_lo={} first_draw={x}",
         shape.k_col(),
@@ -299,12 +349,12 @@ fn run(args: &[String]) -> Result<(), String> {
             }
         }
         println!(
-            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, both BAT targets: all equal)",
+            "cpp_notes_compared={} of {} (FOLDEQ, LIN fold row, both BAT and first FOLD targets: all equal)",
             all.len(),
             cpp.len()
         );
     }
-    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega) pending=row_coefficients,FOLD,CS,BASE");
+    println!("scope=VALUES_OF_PORTED_BLOCKS_ONLY_NOT_A_VERDICT ported=FOLDEQ,LIN_fold_row,SPLIT_targets,BAT_targets(test_u,test_omega),first_FOLD_targets(test_u,test_omega) pending=SEND_sample_rows,group_row_coefficients,CS,BASE");
     Ok(())
 }
 

@@ -52,4 +52,26 @@ Values are exact field elements; when the order of products differs from the C++
   `on_table` pads with zero choices, then rotates by $p$ when rows are high.
 - Not ported: `MaskLedger`/`MaskSlot` (prover side), `sampled_elsewhere` (second chain).
 
-## Next: `Bat::combine` (bat.h) and FOLD (fold.h:444, :462; fold_rounds.h)
+## `blocks/iop/bat.h` → `flashprove-iop/src/bat.rs`
+
+- `combine(S, g, in, x)`: row $i$ is added with weight $x^i$ through `add_to_group_row`, with
+  runs and units set aside and carried once at the end with weight 1. `combine_rows` does the
+  same sum on oracle messages (`Row::add_scaled`).
+- `run`: `begin_run` first, then the BAT round's draw x (round 9 for test_u, 27 for test_omega).
+
+## `fold.h`, `fold_rounds.h`, `fold_algebra.h` → `flashprove-iop/src/fold.rs`
+
+- Messages: the FOLD ε round's message ends with the hiding sum $\sigma$ (before it, the fresh
+  mask's root if the mask was not sent ahead: round 28 is 32 + 24 bytes, round 10 is 24). Its draw
+  is ε. Then $k$ = the **stage's** k (`iopp_fold_shape` overrides the layout's k, h) FOLD rounds,
+  each sending $(c_0, c_2)$, then drawing $g_j$.
+- Running claim: $\sigma + \varepsilon t$; per round $c_1 = \text{claim} - 2c_0 - c_2$,
+  $\text{claim} \leftarrow c_0 + c_1 g + c_2 g^2$. The output target is the final claim (notes 8, 27).
+- `fold_output`: $c$ ← `c.fix_low(γ, k, ε)` then `freeze(log ell)`; each kept form scaled by
+  $\varepsilon\prod(1-g_j)$; $d_0$ = `fold_mask_form` (d folded at $g_1..g_h$, times
+  $\varepsilon\prod_{t\ge h} g_t$); $d_1$ = `fold_mask_weights(k, h, ell_mask, γ)`.
+- `fold_shape_check`, `fold_row_check`: ported as `Result`.
+- Not yet driven: the `GroupRow` that `fold_output` consumes needs every claim's coefficients,
+  and the sample rows come from SEND (S3, send.h).
+
+## Next: SEND sample rows (send.h, S3), then CS (cs.h:721)
