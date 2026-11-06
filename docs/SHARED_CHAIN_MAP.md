@@ -85,9 +85,9 @@ own faults, ported as `debug_assert` + fail-closed errors).
 | S7 ◐ | `fold`: running claim ✔, `fold_output` (c fixed and frozen, kept factor, mask form, mask weights), shape and row checks ✔ | fold.h, fold_rounds.h, fold_algebra.h | notes 8, 27 ✔; 16, 35 follow CS |
 | S8 ◐ | `cs`: single rows' symbols at the first draw ✔; next group's claims (`switch_rows`) pending | cs.h, single_rows.h | notes 9–11, 28–30 ✔; 12–15, 31–34 need the claims' coefficients |
 | S9 ✔ | BASE: linear check $\langle c, M'\rangle + \langle d, \mu'\rangle = t^* + \lambda t$ and encoding check at every listed position (in `shared_chain_check`) | base_case.h, iopp.h (`iopp_last_rows`) | notes 24–25, 43–44 ✔ |
-| S10 | integrate into `proof_walk` → `shared_chain_verified` | iopp.h, lin.h | all 45; negative corpus on algebraic bytes |
+| S10 ✔ | `flashprove_walk::shared_chain::shared_chain_notes` (library), `proof_walk` prints `SHARED_CHAIN_VERIFIED`; `flashprove_iop::book` (`lay_trees`, `TreeBook::enter`, places) replaces every hard-coded tree | iopp.h, lin.h, context.h | all 45 ✔; algebraic-byte negatives pending (Fiat–Shamir makes byte flips fail before BASE) |
 
-Progress: `shared_chain_check` reproduces **all 45 notes** and runs both BASE refusals, which pass on the accepted proof (`SHARED_CHAIN_ALGEBRA_OK`). Each claim's coefficients are carried through BAT, FOLD and CS. Not yet in `proof_walk`'s verdict (S10), and still hard-coded in the driver: the oracle-to-tree placements (TreeBook not ported), kept members in CS (none in the shared chain), and h > 0 for the old mask row of the first stage from the native walk's own draws and
+Progress: `shared_chain_check` reproduces **all 45 notes** and runs both BASE refusals, which pass on the accepted proof (`SHARED_CHAIN_ALGEBRA_OK`). Each claim's coefficients are carried through BAT, FOLD and CS. `proof_walk` runs it (S10). Not ported: kept members in CS (none in the shared chain) from the native walk's own draws and
 openings, compared with upstream in CI. Each round's verifier message is kept as a `Draw` positioned
 after its positions, so later blocks draw in the reference's order (an invariant: one draw per round).
 

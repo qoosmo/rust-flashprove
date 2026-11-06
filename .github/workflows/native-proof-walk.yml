@@ -94,6 +94,7 @@ jobs:
             | tee reports/proof-walk.txt
           grep -qx 'NATIVE_PROOF_WALK_OK' reports/proof-walk.txt
           grep -qx 'unaccounted_bytes=0' reports/proof-walk.txt
+          grep -q '^SHARED_CHAIN_VERIFIED notes=45 ' reports/proof-walk.txt
           grep -q '^cpp_chains_compared=3 rounds=8095 ' reports/proof-walk.txt
           grep -q '^cpp_openings_compared=35 ' reports/proof-walk.txt
       - name: Shared chain, ported blocks, values equal upstream's notes

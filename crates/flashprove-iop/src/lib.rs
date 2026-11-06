@@ -23,6 +23,7 @@
 //! re-serializing a parsed value gives back exactly the input bytes.
 
 pub mod bat;
+pub mod book;
 pub mod claims;
 pub mod code;
 pub mod cs;

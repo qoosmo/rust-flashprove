@@ -26,6 +26,7 @@
 //! Not a verifier: no algebraic check is made on the opened columns, the
 //! answers or the scalars.
 
+pub mod shared_chain;
 use flashprove_field::Fp;
 use flashprove_merkle::{
     leaf_salt_at, opening_bytes, receive_opening, tree_given_count, MerkleError, OracleTreeShape,

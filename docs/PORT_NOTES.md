@@ -117,8 +117,9 @@ Values are exact field elements; when the order of products differs from the C++
 - BASE: λ round message = $t^*$; the BASE message = $M'_0$ (ell), $M'_1$ (ell_zk), $R'_0$ (r), $R'_1$
   (r_zk). Refusal 1: $\langle c, M'_0\rangle + \langle d, M'_1\rangle = t^* + \lambda t$. Refusal 2: at each
   listed position, Enc$(M'_j, R'_j)(x_j) = g^*_j(x) + \lambda\, y_j(x)$.
-- Tree placements in the shared chain: 0 = [G_u | test_u fold mask], 1 = Omega, 2 = split mask,
-  3 = [stage 2 g | fold mask], 4 = [stage 3 g | base mask], 5 = test_omega fold mask, 6, 7 as 3, 4.
+- Tree placements come from `flashprove_iop::book::TreeBook` (`lay_trees`: main-row messages share a
+  tree by leaf class and code length, mask-only ones join a tree of their class; parts in sending
+  order). Shared chain: 0 = [G_u | test_u fold mask], 1 = Omega, 2 = split mask, 3 = [stage 2 g | fold
+  mask], 4 = [stage 3 g | base mask], 5 = test_omega fold mask, 6 and 7 as 3 and 4.
 
-## Next: S10 (move the driver into `flashprove-iop` + `proof_walk`'s verdict, port TreeBook places),
-then the first chain (model segments) and the second chain
+## Next: the first chain (model segments, 68 notes), then the second chain (21 notes)

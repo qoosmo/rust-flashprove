@@ -302,6 +302,10 @@ fn run(args: &[String]) -> Result<(), String> {
     if accounted != proof.len() {
         return Err("the walk does not account for every byte".into());
     }
+    // The shared chain, algebraically (D7 + D9): every block through BASE's two refusals.
+    let notes = flashprove_walk::shared_chain::shared_chain_notes(&proof, &w, &sp, &ss)
+        .map_err(|e| format!("shared chain: {e}"))?;
+    println!("SHARED_CHAIN_VERIFIED notes={} (FOLDEQ, SEND, LIN, SPLIT, BAT, FOLD, CS, BASE of test_u and test_omega)", notes.len());
     if let Some(p) = compare.get("--compare-chains") {
         let (r, c) = compare_chains(&w, proof.len(), p)?;
         println!("cpp_chains_compared={c} rounds={r} (starts, seals, names, kinds, states, read offsets, nonces: all equal)");
@@ -310,7 +314,7 @@ fn run(args: &[String]) -> Result<(), String> {
         println!("cpp_openings_compared={} (offsets, lengths, trees, roots, runs, parameters, lists: all equal)", compare_openings(&w, proof.len(), p)?);
     }
     println!("independence=NO_CPP_OFFSETS_OR_TRACE_INPUTS; non-native inputs: first-query bytes (checked item by item), opening schedule (D7)");
-    println!("scope=ALL_CHAINS_TRANSCRIPT_LINKAGE_AND_MERKLE_MEMBERSHIP_TO_EOF_NOT_ALGEBRAIC_CHECKS_NOT_A_VERDICT");
+    println!("scope=ALL_CHAINS_TRANSCRIPT_LINKAGE_AND_MERKLE_MEMBERSHIP_TO_EOF_SHARED_CHAIN_ALGEBRA_NOT_A_VERDICT pending=first_chain,second_chain");
     Ok(())
 }
 
