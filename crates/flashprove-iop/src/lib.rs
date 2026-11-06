@@ -9,6 +9,11 @@
 //!   stand in a chain's first query (`public_bytes` in `blocks/iop/lin.h`,
 //!   `foldeq.h`, `iopp.h`, `context.h`, `code.h`), parsed canonically and
 //!   checked for the faults the reference checks before running.
+//! * [`tensor`]: structured coefficient vectors, `Tensor` and `Form`
+//!   (`blocks/iop/tensor.h`).
+//! * [`relation`]: linear claims (`Row`), group layouts, the verifier's
+//!   `Statement`, `add_to_group_row` and `VectorLay` (`blocks/iop/relation.h`,
+//!   `foldeq.h`).
 //!
 //! Every parser here rejects trailing bytes and any non-canonical encoding:
 //! re-serializing a parsed value gives back exactly the input bytes.
@@ -18,7 +23,9 @@ pub mod code;
 pub mod ext;
 pub mod foldeq;
 pub mod lin;
+pub mod relation;
 pub mod shapes;
+pub mod tensor;
 
 /// A cursor over canonical bound bytes: little-endian 64-bit words.
 pub(crate) struct Words<'a> {

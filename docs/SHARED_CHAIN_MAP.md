@@ -77,7 +77,7 @@ own faults, ported as `debug_assert` + fail-closed errors).
 | S0 ✔ | `code`: codes, points, factors | code.h, cosets.h | 48 points equal upstream `gl64_point` |
 | S0 ✔ | `shapes`: Codes, LinShape, FoldeqShape, IoppStage | lin.h, foldeq.h, iopp.h, context.h | bound bytes round-trip; faults |
 | S1 ✔ | `ext`: E arithmetic, inner products, eq tables, products | field.h, mle.h, tensor.h (eq parts) | via notes 0–6 |
-| S2 ◐ | `claims`: groups' claim targets in `begin_run` order (PLAIN as added, samples by member as sent, GENERATOR as added), once-only test ✔; `relation`: Row coefficient forms, oracle ids, group layouts | relation.h | via notes 7, 26 ✔ |
+| S2 ◐ | `claims`: groups' claim targets in `begin_run` order (PLAIN as added, samples by member as sent, GENERATOR as added), once-only test ✔; `tensor`: Tensor, Form, frozen parts ✔; `relation`: Row, Run, Statement (verifier), GroupLayout, `add_to_group_row`, `VectorLay` ✔ (semantics in `docs/PORT_NOTES.md`) | relation.h, tensor.h | via notes 7, 26 ✔; coefficient side by unit tests against written-out vectors |
 | S3 | `send`: notices → trees, sample seeds, answers, pads (`Send::pad`, `vector_lay`, `vector_room`) | send.h, foldeq.h | completes `lin_fault` / `foldeq_fault` |
 | S4 ◐ | `foldeq`: record parse, weights, (Rec) targets, (Col) symbols, generator row ✔; record seeds and the full rows wait for S2 | foldeq.h | notes 0–4 ✔ |
 | S5 ◐ | `lin`: lin_fold_row coefficients ✔; SPLIT targets ($s$, $t-s$) ✔; the halves' coefficients wait for S2 | lin.h, split.h | notes 5–6 ✔ |

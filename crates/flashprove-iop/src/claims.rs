@@ -9,7 +9,7 @@
 //! target included: $t = \sum_i x^i t_i$.
 //!
 //! This module carries targets only. The coefficient side of each claim
-//! (`Row`, `GroupRow::c`) is the next step of the port.
+//! (`Row`, `GroupRow`) is in [`crate::relation`].
 
 use flashprove_field::Ext3 as E;
 
