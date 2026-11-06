@@ -1,4 +1,4 @@
-name: D6 native first-chain walk and Merkle openings
+name: Native whole-proof walk (D6, D8) and Merkle openings
 
 on:
   workflow_dispatch:
@@ -7,10 +7,10 @@ on:
       - 'crates/**'
       - 'Cargo.toml'
       - 'scripts/instrument_upstream_*.py'
-      - 'scripts/extract_first_chain_inputs.py'
-      - 'scripts/first_chain_negative.py'
-      - 'tests/vectors/accepted-proof.first-chain.schedule'
-      - '.github/workflows/d6-native-openings.yml'
+      - 'scripts/extract_proof_inputs.py'
+      - 'scripts/proof_negative.py'
+      - 'tests/vectors/accepted-proof.proof.schedule'
+      - '.github/workflows/native-proof-walk.yml'
 
 permissions:
   contents: read
@@ -19,9 +19,9 @@ env:
   UPSTREAM_SHA: 9e2bdd8ff5bf9c62f18263d7dac189b0400b260c
 
 jobs:
-  d6:
+  walk:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -53,45 +53,48 @@ jobs:
       - name: Build the test-only instrumented verifier (diagnostics only)
         run: |
           set -euo pipefail
-          python3 scripts/instrument_upstream_first_round.py upstream-instr/blocks/chain/rounds.h
-          python3 scripts/instrument_upstream_round_events.py upstream-instr/blocks/chain/rounds.h
           python3 scripts/instrument_upstream_openings.py upstream-instr
+          python3 scripts/instrument_upstream_all_chains.py upstream-instr
           (cd upstream-instr && bash verifier/build.sh) | tail -n 1
-      - name: C++ diagnostics on the accepted proof
+      - name: C++ diagnostics on the accepted proof (one log per stage process)
         run: |
           set -euo pipefail
-          mkdir -p reports
+          mkdir -p reports/logs
           F="$PWD/upstream-src/examples/accepted-proof"
-          out=$(RUST_FLASH_TRACE_PATH="$PWD/reports/real-first-round.trace" RUSTFLASH_OPENINGS_LOG="$PWD/reports/openings.log" \
+          out=$(RUSTFLASH_CHAINS_LOG="$PWD/reports/logs/chains" RUSTFLASH_OPENINGS_LOG="$PWD/reports/logs/openings" \
             upstream-instr/bin/cp_verify "$F/config" "$F/ivk" "$F/example.req" "$F/example.y" "$F/example.proof" -id "$(cat "$F/ID.txt")" -q)
           test "$(printf '%s\n' "$out" | tail -n 1)" = "YES"
-          python3 scripts/extract_first_chain_inputs.py reports/real-first-round.trace reports/openings.log reports/inputs
-          diff -u tests/vectors/accepted-proof.first-chain.schedule reports/inputs/first-chain.schedule
+          chains=$(grep -l '^chain label=46524d01 ' reports/logs/chains.*)
+          pid="${chains##*.}"
+          echo "request stage: pid $pid"
+          cp "reports/logs/chains.$pid" reports/request-chains.log
+          cp "reports/logs/openings.$pid" reports/request-openings.log
+          python3 scripts/extract_proof_inputs.py reports/request-chains.log reports/request-openings.log "$F/example.proof" reports/inputs
+          diff -u tests/vectors/accepted-proof.proof.schedule reports/inputs/proof.schedule
           echo "opening schedule equals the committed vector"
-      - name: Native first-chain walk with every opening verified, then compared with C++
+      - name: Native walk of the whole proof, every opening verified, then compared with C++
         run: |
           set -euo pipefail
           F="$PWD/upstream-src/examples/accepted-proof"
-          I=reports/inputs
-          target/release/first_chain_walk "$F/example.proof" "$F/example.req" \
+          target/release/proof_walk "$F/example.proof" "$F/example.req" \
             "$F/config/policy.txt" "$F/config/layout.txt" "$F/config/KL.bin" \
-            "$I/first-parameters.bin" "$I/first-statement.bin" tests/vectors/accepted-proof.first-chain.schedule \
-            --compare-trace reports/real-first-round.trace --compare-openings reports/openings.log \
-            | tee reports/first-chain-walk.txt
-          grep -qx 'NATIVE_FIRST_CHAIN_WALK_OK' reports/first-chain-walk.txt
-          grep -qx 'openings_verified=20' reports/first-chain-walk.txt
-          grep -qx 'unaccounted_bytes_in_span=0' reports/first-chain-walk.txt
-          grep -qx 'chain_span=\[44,3160036)' reports/first-chain-walk.txt
+            reports/inputs tests/vectors/accepted-proof.proof.schedule \
+            --compare-chains reports/request-chains.log --compare-openings reports/request-openings.log \
+            | tee reports/proof-walk.txt
+          grep -qx 'NATIVE_PROOF_WALK_OK' reports/proof-walk.txt
+          grep -qx 'unaccounted_bytes=0' reports/proof-walk.txt
+          grep -q '^cpp_chains_compared=3 rounds=8095 ' reports/proof-walk.txt
+          grep -q '^cpp_openings_compared=35 ' reports/proof-walk.txt
       - name: Negative corpus (Rust must reject; clean C++ must not say YES)
         run: |
           set -euo pipefail
-          python3 scripts/first_chain_negative.py target/release/first_chain_walk upstream-src/bin/cp_verify \
-            upstream-src/examples/accepted-proof reports/inputs --json reports/first-chain-negative.json \
-            | tee reports/first-chain-negative.txt
+          python3 scripts/proof_negative.py target/release/proof_walk upstream-src/bin/cp_verify \
+            upstream-src/examples/accepted-proof reports/inputs tests/vectors/accepted-proof.proof.schedule \
+            --json reports/proof-negative.json | tee reports/proof-negative.txt
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: d6-native-openings
+          name: native-proof-walk
           path: reports/
           if-no-files-found: warn

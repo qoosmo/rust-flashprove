@@ -9,7 +9,7 @@ The 2,679,688 bytes that the trace-guided replay skipped are exactly **20 Merkle
 run-specific trees. There is no other record type, no stored tree, and no byte left over. Each gap
 of `NEXT_OPENINGS.md` is one to three whole openings that are read right after a positions round.
 
-The Rust walk (`crates/flashprove-walk`, binary `first_chain_walk`) now reads the whole first chain
+The Rust walk (`crates/flashprove-walk`, binary `proof_walk`; the whole file: `PROOF_WALK.md`) reads the whole first chain
 sequentially, `[44, 3,160,036)`, and **verifies every opening against the root that its own chain
 received**:
 
@@ -80,7 +80,7 @@ state, and every opening's offset, length, tree, root, run, parameters and list.
 
 1. **First-query bytes** (parameters and statement): still the C++ serialization, audited against
    the public files as before.
-2. **Opening schedule** (`tests/vectors/accepted-proof.first-chain.schedule`): which trees open after
+2. **Opening schedule** (`tests/vectors/accepted-proof.proof.schedule`): which trees open after
    which positions round, and their widths. In the reference this follows from the statement's
    oracle notices (`lay_trees`) and the protocol code. Upstream's `docs/format/read_proof.py` derives
    depths and widths from first-query items (R7.12, R12.10, R12.16–R12.18, R13.19, R14.4) but finds
@@ -99,7 +99,7 @@ mutations that change only these are accepted by the walk and are recorded as su
 enforce them. Also by design (R7.11): two positions with one short position each show their own
 copy of a mask symbol, and nothing here makes them agree.
 
-## Negative corpus (`scripts/first_chain_negative.py`)
+## Negative corpus (first chain; now part of `scripts/proof_negative.py`)
 
 191 cases. For each of the 20 openings: first and last column symbol, salt, first given digest,
 last byte, a symbol equal to p, a symbol equal to 2^64 − 1, a truncation inside the opening, and two
@@ -111,7 +111,7 @@ Result: Rust rejects all 189 cases it must reject (classes: `WrongRoot`, `NonCan
 answers `NO: proof-refused` to every proof mutation. A pair of rejections does not show that the same
 check fired on both sides: the Rust class is recorded per case, and C++ gives only its stage name.
 
-## Rest of the proof (observed, not yet walked natively: stage D8)
+## Rest of the proof (stage D8: now walked natively, see `PROOF_WALK.md`)
 
 From the same openings log, the request proof after the first chain holds a **stored-table opening**
 at 3,160,340 (138,312 bytes; a = 23, W = 256, m = 53; `IndexKey::read`, `blocks/iop/foldeq.h`), whose

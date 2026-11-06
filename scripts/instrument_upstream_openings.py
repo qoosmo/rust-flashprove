@@ -3,7 +3,7 @@
 
 Run on a PINNED upstream checkout (a separate worktree). Never use the
 resulting binary as a verifier. For each `read_opening` call it appends one
-line to $RUSTFLASH_OPENINGS_LOG:
+line to $RUSTFLASH_OPENINGS_LOG.<pid> (one file per stage process):
 
   opening reader_left_before=<n> reader_left_after=<n> ok=<0|1> checked=<0|1|->
           chain=<label hex> round=<k> stored=<0|1> tree=<t> log_n=<a> log_n_zk=<b>
@@ -60,6 +60,9 @@ def main():
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
+#include <string>
+#include <thread>
+#include <unistd.h>
 inline void rustflash_hex(std::FILE *f, const Digest &d) {
   u8 b[DIGEST_BYTES];
   digest_to_bytes(d, b);
@@ -71,10 +74,10 @@ inline void rustflash_log_opening(size_t before, size_t after, bool ok, int chec
   const char *path = std::getenv("RUSTFLASH_OPENINGS_LOG");
   if (!path) return;
   std::lock_guard<std::mutex> g(mu);
-  std::FILE *f = std::fopen(path, "a");
+  std::FILE *f = std::fopen((std::string(path) + "." + std::to_string((int)getpid())).c_str(), "a");  // one file per process
   if (!f) return;
-  std::fprintf(f, "opening reader_left_before=%zu reader_left_after=%zu ok=%d checked=%d chain=%llx round=%llu stored=%d tree=%u log_n=%u log_n_zk=%u main=",
-               before, after, ok ? 1 : 0, checked, (unsigned long long)label, (unsigned long long)round, s.stored ? 1 : 0, (unsigned)s.tree_number, s.log_n, s.log_n_zk);
+  std::fprintf(f, "opening pid=%d tid=%zu reader_left_before=%zu reader_left_after=%zu ok=%d checked=%d chain=%llx round=%llu stored=%d tree=%u log_n=%u log_n_zk=%u main=",
+               (int)getpid(), std::hash<std::thread::id>{}(std::this_thread::get_id()), before, after, ok ? 1 : 0, checked, (unsigned long long)label, (unsigned long long)round, s.stored ? 1 : 0, (unsigned)s.tree_number, s.log_n, s.log_n_zk);
   for (size_t i = 0; i < s.main_symbols.size(); i++) std::fprintf(f, "%s%zu", i ? "," : "", s.main_symbols[i]);
   std::fprintf(f, " mask=");
   for (size_t i = 0; i < s.mask_symbols.size(); i++) std::fprintf(f, "%s%zu", i ? "," : "", s.mask_symbols[i]);
